@@ -97,33 +97,33 @@ FlashPool/
 ## TODO / Future Enhancements
 
 ### Core Functionality & Backend
-*   **[ ] Integrate Stellar Wallet Kit:** Replace mock Freighter logic with a robust Stellar wallet solution (e.g., WalletConnect, Albedo, or full Freighter SDK integration).
-*   **[ ] Create Contract Bindings:** Develop and integrate bindings for Soroban/Stellar smart contracts that will manage campaign logic, deposits, and reward distribution.
-*   **[ ] Add Contract Folder:** Create a dedicated `/contracts` folder for Soroban/Stellar smart contract source code and related artifacts (e.g., WASM, ABI).
-*   **[ ] Implement Real Backend & Database:** 
+*   [ ] Integrate Stellar Wallet Kit:** Replace mock Freighter logic with a robust Stellar wallet solution (e.g., WalletConnect, Albedo, or full Freighter SDK integration).
+*   [ ] Create Contract Bindings:** Develop and integrate bindings for Soroban/Stellar smart contracts that will manage campaign logic, deposits, and reward distribution.
+*   [ ] Add Contract Folder:** Create a dedicated `/contracts` folder for Soroban/Stellar smart contract source code and related artifacts (e.g., WASM, ABI).
+*   [ ] Implement Real Backend & Database:** 
     *   Replace all mock data (`availablePools`, campaign data in `CampaignGrid`, chart data in `CampaignStats`, etc.) with actual data fetched from a backend.
     *   User authentication and profiles.
     *   Persistence of campaign data, user contributions, and reward states.
-*   **[ ] Real-time Data & Progress:**
+*   [ ] Real-time Data & Progress:**
     *   Implement logic to fetch and display real-time campaign progress (e.g., actual hours passed, current TVL contributions).
     *   Accurate, dynamic APY calculations based on real-time on-chain or backend data.
-*   **[ ] Transaction Signing and Submission:** Implement actual transaction flows for launching campaigns, contributing liquidity, and claiming rewards.
-*   **[ ] Real Exchange Rate Fetching:** Replace mock `getFlashEquivalent` with calls to a reliable oracle or DEX API for accurate token to FLASH quoting.
+*   [ ] Transaction Signing and Submission:** Implement actual transaction flows for launching campaigns, contributing liquidity, and claiming rewards.
+*   [ ] Real Exchange Rate Fetching:** Replace mock `getFlashEquivalent` with calls to a reliable oracle or DEX API for accurate token to FLASH quoting.
 
 ### Frontend & UI/UX
-*   **[ ] Define Strong TypeScript Interfaces:** Replace `any` types (e.g., for `campaignData` in `CampaignForm`) with well-defined TypeScript interfaces for better type safety and maintainability.
-*   **[ ] Comprehensive Form Validation & Error Handling:** Implement robust client-side and server-side validation for all forms (campaign creation, deposits, etc.) with clear user feedback.
-*   **[ ] Advanced Filtering & Sorting:** Enhance the "Explore Campaigns" page with more sophisticated filtering (by token, APY range, status) and sorting options.
-*   **[ ] User Profile/Dashboard:** Create a dedicated area for users to view their created campaigns, participation history, and earned/claimable rewards.
-*   **[ ] Notifications System:** Implement a system for user notifications (e.g., campaign starting/ending, rewards claimable) using toasts or a dedicated notification center.
-*   **[ ] Finalize UI/UX:** Conduct a thorough review of all pages and components to ensure consistency, responsiveness across all device sizes, and optimal user experience.
-*   **[ ] Accessibility (A11y) Audit & Improvements:** Ensure the application is accessible by following WCAG guidelines and performing accessibility testing.
-*   **[ ] Mobile Navbar Link Visibility:** Confirm and ensure mobile navigation links are always visible with proper contrast against the menu background.
+*   [ ] Define Strong TypeScript Interfaces:** Replace `any` types (e.g., for `campaignData` in `CampaignForm`) with well-defined TypeScript interfaces for better type safety and maintainability.
+*   [ ] Comprehensive Form Validation & Error Handling:** Implement robust client-side and server-side validation for all forms (campaign creation, deposits, etc.) with clear user feedback.
+*   [ ] Advanced Filtering & Sorting:** Enhance the "Explore Campaigns" page with more sophisticated filtering (by token, APY range, status) and sorting options.
+*   [ ] User Profile/Dashboard:** Create a dedicated area for users to view their created campaigns, participation history, and earned/claimable rewards.
+*   [ ] Notifications System:** Implement a system for user notifications (e.g., campaign starting/ending, rewards claimable) using toasts or a dedicated notification center.
+*   [ ] Finalize UI/UX:** Conduct a thorough review of all pages and components to ensure consistency, responsiveness across all device sizes, and optimal user experience.
+*   [ ] Accessibility (A11y) Audit & Improvements:** Ensure the application is accessible by following WCAG guidelines and performing accessibility testing.
+*   [ ] Mobile Navbar Link Visibility:** Confirm and ensure mobile navigation links are always visible with proper contrast against the menu background.
 
 ### Development & Operations
-*   **[ ] Unit & Integration Tests:** Implement a testing strategy with frameworks like Jest and React Testing Library to ensure code quality and prevent regressions.
-*   **[ ] Deployment Setup & CI/CD:** Configure a deployment pipeline (e.g., Vercel, Netlify, AWS Amplify) and set up Continuous Integration/Continuous Deployment.
-*   **[ ] Detailed API Documentation:** If custom backend APIs are developed, create comprehensive documentation (e.g., using Swagger/OpenAPI).
+*   [ ] Unit & Integration Tests:** Implement a testing strategy with frameworks like Jest and React Testing Library to ensure code quality and prevent regressions.
+*   [ ] Deployment Setup & CI/CD:** Configure a deployment pipeline (e.g., Vercel, Netlify, AWS Amplify) and set up Continuous Integration/Continuous Deployment.
+*   [ ] Detailed API Documentation:** If custom backend APIs are developed, create comprehensive documentation (e.g., using Swagger/OpenAPI).
 
 ## Contributing
 
