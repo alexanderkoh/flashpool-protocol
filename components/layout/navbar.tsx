@@ -13,14 +13,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useWallet } from '@/lib/freighter-provider';
+import { useWallet } from '@/hooks/use-wallet';
 
 export function Navbar() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
-  // Use the wallet provider instead of local state
-  const { connected, publicKey, connect, disconnect, isConnecting } = useWallet();
+  // Updated destructuring to use isConnected from the new useWallet hook
+  const { isConnected: connected, publicKey, connect, disconnect, isConnecting } = useWallet();
 
   const toggleMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
