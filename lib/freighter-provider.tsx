@@ -2,7 +2,8 @@
 
 import { createContext, useContext, useState, useEffect } from 'react';
 
-type FreighterContextType = {
+// Renamed to avoid conflict and mark as deprecated
+type FreighterContext_DEPRECATED_Type = {
   connected: boolean;
   publicKey: string | null;
   connect: () => Promise<void>;
@@ -10,7 +11,8 @@ type FreighterContextType = {
   isConnecting: boolean;
 };
 
-const FreighterContext = createContext<FreighterContextType>({
+// Renamed to avoid conflict
+const FreighterContext_DEPRECATED = createContext<FreighterContext_DEPRECATED_Type>({
   connected: false,
   publicKey: null,
   connect: async () => {},
@@ -18,7 +20,8 @@ const FreighterContext = createContext<FreighterContextType>({
   isConnecting: false,
 });
 
-export function FreighterProvider({ children }: { children: React.ReactNode }) {
+// Renamed to avoid conflict and mark as deprecated
+export function FreighterProvider_DEPRECATED({ children }: { children: React.ReactNode }) {
   const [connected, setConnected] = useState(false);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -27,7 +30,7 @@ export function FreighterProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Browser-only code to avoid SSR issues
     if (typeof window !== 'undefined') {
-      const savedPublicKey = localStorage.getItem('flashpool-wallet');
+      const savedPublicKey = localStorage.getItem('flashpool-wallet-deprecated'); // Changed LS key
       if (savedPublicKey) {
         setConnected(true);
         setPublicKey(savedPublicKey);
@@ -48,13 +51,13 @@ export function FreighterProvider({ children }: { children: React.ReactNode }) {
       
       // Save to localStorage for persistence
       if (typeof window !== 'undefined') {
-        localStorage.setItem('flashpool-wallet', mockPublicKey);
+        localStorage.setItem('flashpool-wallet-deprecated', mockPublicKey); // Changed LS key
       }
       
       setConnected(true);
       setPublicKey(mockPublicKey);
     } catch (error) {
-      console.error('Failed to connect wallet:', error);
+      console.error('Failed to connect wallet (deprecated):', error);
     } finally {
       setIsConnecting(false);
     }
@@ -62,14 +65,14 @@ export function FreighterProvider({ children }: { children: React.ReactNode }) {
 
   const disconnect = () => {
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('flashpool-wallet');
+      localStorage.removeItem('flashpool-wallet-deprecated'); // Changed LS key
     }
     setConnected(false);
     setPublicKey(null);
   };
 
   return (
-    <FreighterContext.Provider 
+    <FreighterContext_DEPRECATED.Provider 
       value={{ 
         connected, 
         publicKey, 
@@ -79,10 +82,11 @@ export function FreighterProvider({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
-    </FreighterContext.Provider>
+    </FreighterContext_DEPRECATED.Provider>
   );
 }
 
-export function useWallet() {
-  return useContext(FreighterContext);
+// Renamed to avoid conflict and mark as deprecated
+export function useFreighterWallet_DEPRECATED() {
+  return useContext(FreighterContext_DEPRECATED);
 }
