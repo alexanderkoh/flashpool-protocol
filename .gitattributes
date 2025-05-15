@@ -1,0 +1,2 @@
+contracts/target/debug/deps/*.pdb filter=lfs diff=lfs merge=lfs -text
+contracts/target/debug/deps/*.rlib filter=lfs diff=lfs merge=lfs -text

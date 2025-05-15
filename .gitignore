@@ -34,3 +34,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+**/test_snapshots
+**/target/debug
+contracts/target/debug
+
+# Rust build artifacts
+contracts/target/
