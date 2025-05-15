@@ -4,12 +4,12 @@
 // Imports
 //───────────────────────────────────────────────────────────────
 use soroban_sdk::{
-    contract, contractimpl, contracttype, panic_with_error,
-    token::{Client as TokenClient},
+    contract, contracterror, contractimpl, contracttype, panic_with_error,
+    token::Client as TokenClient,
     Address, Env, IntoVal, Symbol, Val, unwrap::UnwrapOptimized,
 };
 
-// Import Soroswap pair WASM (relative to crate root)
+// Import Soroswap pair WASM (path is **relative to crate root**)
 pub mod pair {
     soroban_sdk::contractimport!(
         file = "soroswap-contracts/soroswap_pair.wasm"
@@ -19,6 +19,7 @@ pub mod pair {
 //───────────────────────────────────────────────────────────────
 // Errors
 //───────────────────────────────────────────────────────────────
+#[contracterror]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u32)]
 pub enum FlashErr {
@@ -97,8 +98,8 @@ fn int_sqrt(mut x: u128) -> u128 {
 fn s(e:&Env,k:&'static str)->Symbol { Symbol::new(e,k) }
 fn set_addr(e:&Env,k:&'static str,a:&Address){ e.storage().instance().set(&s(e,k),a) }
 fn get_addr(e:&Env,k:&'static str)->Address { e.storage().instance().get(&s(e,k)).unwrap_optimized() }
-fn set_u32 (e:&Env,k:&'static str,v:u32){ e.storage().instance().set(&s(e,k),&v) }
-fn get_u32 (e:&Env,k:&'static str,d:u32)->u32{ e.storage().instance().get(&s(e,k)).unwrap_or(d) }
+fn set_u32(e:&Env,k:&'static str,v:u32){ e.storage().instance().set(&s(e,k),&v) }
+fn get_u32(e:&Env,k:&'static str,d:u32)->u32{ e.storage().instance().get(&s(e,k)).unwrap_or(d) }
 
 fn bump(e:&Env){
     e.storage().instance().extend_ttl(
@@ -128,7 +129,7 @@ fn swap_usdc_to_flash(
     TokenClient::new(e,&usdc).transfer(&e.current_contract_address(),pair,&usdc_amt);
     let out = rf.checked_mul(usdc_amt).unwrap().checked_div(ru+usdc_amt).unwrap();
     let (o0,o1) = if flash<usdc {(out,0)} else {(0,out)};
-    p.swap(&o0,&o1,&e.current_contract_address());      // swap() returns ()
+    p.swap(&o0,&o1,&e.current_contract_address());
     out
 }
 
@@ -136,14 +137,19 @@ fn swap_usdc_to_flash(
 // Interface trait
 //───────────────────────────────────────────────────────────────
 pub trait Manager {
-    fn initialize(e:Env, admin:Address, flash:Address, usdc:Address);
-    fn create_campaign(e:Env, fee_usdc:i128, target_pair:Address,
-                       unlock:u32, target_lp:i128, bonus_flash:i128, creator: Address) -> u32;
-    fn join_campaign(e:Env,id:u32, token0_amt:i128, user: Address);
-    fn compound(e:Env,id:u32);
-    fn claim(e:Env,id:u32, user: Address);
-    fn set_surplus_bps(e:Env,bps:u32);
-    fn set_ttl(e:Env,threshold:u32,bump:u32);
+    fn initialize         (e:Env, admin:Address, flash:Address, usdc:Address);
+
+    fn create_campaign    (e:Env, fee_usdc:i128, pair:Address,
+                           unlock:u32, target_lp:i128, bonus_flash:i128,
+                           creator:Address) -> u32;
+
+    fn join_campaign      (e:Env,id:u32, token0_amt:i128, user:Address);
+    fn compound           (e:Env,id:u32);
+
+    fn claim              (e:Env,id:u32, user:Address);
+
+    fn set_surplus_bps    (e:Env, admin:Address, bps:u32);
+    fn set_ttl            (e:Env, admin:Address, threshold:u32, bump:u32);
 }
 
 #[contract] pub struct FlashCampaignManager;
@@ -158,6 +164,8 @@ impl Manager for FlashCampaignManager {
     fn initialize(e:Env, admin:Address, flash:Address, usdc:Address){
         bump(&e);
         ensure!(&e, !e.storage().instance().has(&s(&e,KEY_ADMIN)), FlashErr::AlreadyInit);
+
+        admin.require_auth();                 // admin must sign init
         set_addr(&e,KEY_ADMIN,&admin);
         set_addr(&e,KEY_FLASH,&flash);
         set_addr(&e,KEY_USDC ,&usdc );
@@ -175,10 +183,12 @@ impl Manager for FlashCampaignManager {
 
     //──────── create campaign ────────
     fn create_campaign(
-        e: Env, fee_usdc:i128, target_pair:Address,
-        unlock:u32, target_lp:i128, bonus_flash:i128, creator: Address
+        e:Env, fee_usdc:i128, target_pair:Address,
+        unlock:u32, target_lp:i128, bonus_flash:i128, creator:Address
     ) -> u32 {
         bump(&e);
+        creator.require_auth();
+
         let flash  = get_addr(&e,KEY_FLASH);
         let usdc   = get_addr(&e,KEY_USDC);
         let surplus_bps = get_u32(&e,KEY_SURP,DEFAULT_SURPLUS_BPS);
@@ -192,24 +202,23 @@ impl Manager for FlashCampaignManager {
         let pcli = pair::Client::new(&e,&target_pair);
         let (rf0,ru0) = pcli.get_reserves();
 
-        // 3 swap amount s and remaining l
+        // 3 split fee
         let s_min = int_sqrt((ru0 as u128)*(ru0 as u128 + fee_usdc as u128)) as i128 - ru0;
         let s     = (s_min + fee_usdc*surplus_bps as i128 / MAX_BPS as i128).min(fee_usdc);
         let l     = fee_usdc - s;
 
-        // 4 perform swap
+        // 4 swap s USDC → FLASH
         TokenClient::new(&e,&usdc)
             .transfer(&e.current_contract_address(),&target_pair,&s);
         let flash_out = rf0.checked_mul(s).unwrap().checked_div(ru0+s).unwrap();
-        let (o0,o1)= if flash<usdc{(flash_out,0)} else {(0,flash_out)};
+        let (o0,o1) = if flash<usdc {(flash_out,0)} else {(0,flash_out)};
         pcli.swap(&o0,&o1,&e.current_contract_address());
 
-        // after swap
+        // 5 liquidity maths
         let ru_swap = ru0 + s;
         let rf_swap = rf0 - flash_out;
         let flash_need = l.checked_mul(rf_swap).unwrap().checked_div(ru_swap).unwrap();
 
-        // 5 donate if needed
         let donated = if flash_need > flash_out {
             let extra = flash_need - flash_out;
             TokenClient::new(&e,&flash)
@@ -217,7 +226,6 @@ impl Manager for FlashCampaignManager {
             extra
         } else { 0 };
 
-        // 6 add liquidity
         if l > 0 {
             TokenClient::new(&e,&usdc)
                 .transfer(&e.current_contract_address(),&target_pair,&l);
@@ -225,7 +233,7 @@ impl Manager for FlashCampaignManager {
         let lp_minted = pcli.deposit(&e.current_contract_address());
         ensure!(&e, lp_minted > 0, FlashErr::Math);
 
-        // 7 safe-emission cap
+        // 6 safe-emission cap
         let ru1 = ru_swap + l;
         let rf1 = rf_swap + flash_need;
         let root = int_sqrt(
@@ -238,7 +246,7 @@ impl Manager for FlashCampaignManager {
         let surplus = flash_out + donated - flash_need;
         let reward_flash = surplus.min(x_max);
 
-        // 8 store campaign
+        // 7 persist campaign
         let mut id = get_u32(&e,KEY_NEXT,0) + 1;
         set_u32(&e,KEY_NEXT,id);
         let camp = Campaign{
@@ -252,8 +260,9 @@ impl Manager for FlashCampaignManager {
     }
 
     //──────── join campaign ────────
-    fn join_campaign(e:Env,id:u32, token0_amt:i128, user: Address){
+    fn join_campaign(e:Env,id:u32, token0_amt:i128, user:Address){
         bump(&e);
+        user.require_auth();
         ensure!(&e, token0_amt>0, FlashErr::Math);
 
         let mut c = load_camp(&e,id);
@@ -264,7 +273,7 @@ impl Manager for FlashCampaignManager {
         let t0cli  = TokenClient::new(&e,&t0);
         t0cli.transfer(&user,&e.current_contract_address(),&token0_amt);
 
-        // swap half to t1
+        // swap half
         let half = token0_amt/2;
         t0cli.transfer(&e.current_contract_address(),&c.pair,&half);
         let (r0,r1) = pcli.get_reserves();
@@ -298,7 +307,6 @@ impl Manager for FlashCampaignManager {
         let mut c = load_camp(&e,id);
         let pcli   = pair::Client::new(&e,&c.pair);
 
-        // withdraw LP
         let (a0,a1) = pcli.withdraw(&e.current_contract_address());
         let t0 = pcli.token_0(); let t1 = pcli.token_1();
 
@@ -323,8 +331,10 @@ impl Manager for FlashCampaignManager {
     }
 
     //──────── claim ────────
-    fn claim(e:Env,id:u32, user: Address){
+    fn claim(e:Env,id:u32, user:Address){
         bump(&e);
+        user.require_auth();
+
         let c = load_camp(&e,id);
         ensure!(&e, e.ledger().sequence()>=c.end_ledger, FlashErr::TooEarly);
 
@@ -346,14 +356,17 @@ impl Manager for FlashCampaignManager {
     }
 
     //──────── admin helpers ────────
-    fn set_surplus_bps(e:Env,bps:u32){
-        ensure!(&e, e.invoker()==get_addr(&e,KEY_ADMIN), FlashErr::NotAdmin);
+    fn set_surplus_bps(e:Env, admin:Address, bps:u32){
+        admin.require_auth();
+        ensure!(&e, admin == get_addr(&e,KEY_ADMIN), FlashErr::NotAdmin);
         ensure!(&e, bps<MAX_BPS, FlashErr::BpsOutOfRange);
         set_u32(&e,KEY_SURP,bps);
     }
-    fn set_ttl(e:Env,threshold:u32,bump:u32){
-        ensure!(&e, e.invoker()==get_addr(&e,KEY_ADMIN), FlashErr::NotAdmin);
+
+    fn set_ttl(e:Env, admin:Address, threshold:u32, bump_:u32){
+        admin.require_auth();
+        ensure!(&e, admin == get_addr(&e,KEY_ADMIN), FlashErr::NotAdmin);
         set_u32(&e,KEY_TTLT,threshold);
-        set_u32(&e,KEY_TTLB,bump);
+        set_u32(&e,KEY_TTLB,bump_);
     }
 }
