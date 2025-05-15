@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "flash_campaign_manager"
+]
+
+#
+# Shared metadata every crate will inherit.
+# You can delete this block if you prefer to put
+# `version` and `rust-version` in each crate instead.
+#
+[workspace.package]
+version      = "0.1.0"
+rust-version = "1.85"          # your installed toolchain
+
+#
+# Shared dependency versions – keep them in one place.
+#
+[workspace.dependencies]
+soroban-sdk        = { version = "22.0.7" }
+soroban-token-sdk  = { version = "22.0.7" }
+
+#
+# Release profile tailored for tiny Wasm
+#
+[profile.release]
+opt-level       = "z"
+codegen-units   = 1
+lto             = true
+strip           = "symbols"
+overflow-checks = true
+panic           = "abort"
+debug           = 0
+
+#
+# Optional: a profile with debug-assertions for on-chain logs
+#
+[profile.release-with-logs]
+inherits          = "release"
+debug-assertions  = true
