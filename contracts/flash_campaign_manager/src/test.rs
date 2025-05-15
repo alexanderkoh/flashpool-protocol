@@ -54,7 +54,7 @@ impl MockPair {
         Self::set(&e,Self::k_lp(),0_i128);
     }
 
-    /* interface expected by FlashCampaignManager */
+    /* interface required by manager */
     pub fn token_0(e:Env)->Address { Self::geta(&e,Self::k_t0()) }
     pub fn token_1(e:Env)->Address { Self::geta(&e,Self::k_t1()) }
     pub fn get_reserves(e:Env)->(i128,i128){
@@ -66,23 +66,30 @@ impl MockPair {
         let t1=Self::geta(&e,Self::k_t1());
         Self::set(&e,Self::k_rf(),Self::geti(&e,Self::k_rf())-out0);
         Self::set(&e,Self::k_ru(),Self::geti(&e,Self::k_ru())-out1);
-        let me = e.current_contract_address();
+        let me=e.current_contract_address();
         if out0>0 { token::Client::new(&e,&t0).transfer(&me,&to,&out0); }
         if out1>0 { token::Client::new(&e,&t1).transfer(&me,&to,&out1); }
     }
 
     pub fn deposit(e:Env,_to:Address)->i128{
-        let minted = 42;
+        let minted=42;
         Self::set(&e,Self::k_lp(),Self::geti(&e,Self::k_lp())+minted);
         minted
     }
-    pub fn withdraw(e:Env,_from:Address)->(i128,i128){
-        let r = Self::get_reserves(e.clone());
-        Self::set(&e,Self::k_lp(),0);
-        r
+
+    pub fn withdraw(e:Env,to:Address)->(i128,i128){
+        let (rf,ru)=Self::get_reserves(e.clone());
+        let t0=Self::geta(&e,Self::k_t0());
+        let t1=Self::geta(&e,Self::k_t1());
+        let me=e.current_contract_address();
+        if rf>0 { token::Client::new(&e,&t0).transfer(&me,&to,&rf); }
+        if ru>0 { token::Client::new(&e,&t1).transfer(&me,&to,&ru); }
+        Self::set(&e,Self::k_rf(),0);
+        Self::set(&e,Self::k_ru(),0);
+        (rf,ru)
     }
 
-    /* minimal token-like transfer so manager’s `claim` succeeds */
+    /* token-like stub so manager can call `transfer` on LP token */
     pub fn transfer(_e:Env,_from:Address,_to:Address,_amount:i128){}
 }
 
