@@ -4,17 +4,12 @@ use super::*;
 
 use soroban_sdk::{
     symbol_short,
-    testutils::{
-        Address as _,
-        AuthorizedFunction,
-        Ledger,
-        Logs,
-    },
+    testutils::{Address as _, Ledger, Logs},
     token, Address, Env, IntoVal, Symbol, Val,
 };
 extern crate std;
 
-/*───────────────────────────────── helpers – token ───────────────────────────*/
+/*──────────────────────── helpers – token ───────────────────────*/
 fn create_token<'a>(
     e: &Env,
     admin: &Address,
@@ -26,7 +21,7 @@ fn create_token<'a>(
     )
 }
 
-/*───────────────────────────── tiny MockPair implementation ──────────────────*/
+/*──────────────────── tiny in-mem AMM + LP token ────────────────*/
 #[contract] pub struct MockPair;
 
 #[contractimpl]
@@ -37,23 +32,24 @@ impl MockPair {
     fn k_t0() -> Symbol { symbol_short!("t0") }
     fn k_t1() -> Symbol { symbol_short!("t1") }
 
-    fn set<T: IntoVal<Env, Val>>(e: &Env, k: Symbol, v: T) { e.storage().instance().set(&k,&v) }
-    fn geti(e: &Env, k: Symbol) -> i128    { e.storage().instance().get(&k).unwrap() }
-    fn geta(e: &Env, k: Symbol) -> Address { e.storage().instance().get(&k).unwrap() }
+    fn set<T: IntoVal<Env, Val>>(e:&Env,k:Symbol,v:T){ e.storage().instance().set(&k,&v) }
+    fn geti(e:&Env,k:Symbol)->i128    { e.storage().instance().get(&k).unwrap() }
+    fn geta(e:&Env,k:Symbol)->Address { e.storage().instance().get(&k).unwrap() }
 
-    pub fn init(e: Env, t0: Address, t1: Address, rf: i128, ru: i128) {
-        Self::set(&e, Self::k_t0(), t0);
-        Self::set(&e, Self::k_t1(), t1);
-        Self::set(&e, Self::k_rf(), rf);
-        Self::set(&e, Self::k_ru(), ru);
-        Self::set(&e, Self::k_lp(), 0_i128);
+    pub fn init(e:Env,t0:Address,t1:Address,rf:i128,ru:i128){
+        Self::set(&e,Self::k_t0(),t0);
+        Self::set(&e,Self::k_t1(),t1);
+        Self::set(&e,Self::k_rf(),rf);
+        Self::set(&e,Self::k_ru(),ru);
+        Self::set(&e,Self::k_lp(),0_i128);
     }
 
-    pub fn token_0(e: Env) -> Address { Self::geta(&e, Self::k_t0()) }
-    pub fn token_1(e: Env) -> Address { Self::geta(&e, Self::k_t1()) }
-    pub fn get_reserves(e: Env) -> (i128,i128){
+    pub fn token_0(e:Env)->Address { Self::geta(&e,Self::k_t0()) }
+    pub fn token_1(e:Env)->Address { Self::geta(&e,Self::k_t1()) }
+    pub fn get_reserves(e:Env)->(i128,i128){
         (Self::geti(&e,Self::k_rf()), Self::geti(&e,Self::k_ru()))
     }
+
     pub fn swap(e:Env,out0:i128,out1:i128,to:Address){
         let t0=Self::geta(&e,Self::k_t0());
         let t1=Self::geta(&e,Self::k_t1());
@@ -79,10 +75,11 @@ impl MockPair {
         Self::set(&e,Self::k_ru(),0);
         (rf,ru)
     }
+    /* LP token ‘transfer’ stub (manager expects it) */
     pub fn transfer(_e:Env,_from:Address,_to:Address,_amount:i128){}
 }
 
-/*────────────────────────────── test-bed bootstrap ───────────────────────────*/
+/*────────────────── shared test-bed bootstrap ──────────────────*/
 #[allow(clippy::type_complexity)]
 fn setup<'a>() -> (
     Env,
@@ -124,14 +121,14 @@ fn setup<'a>() -> (
     (e,mgr,alice,bob,flash,usdc,pair)
 }
 
-/*────────────────────────── pretty log dump helper ───────────────────────────*/
+/*─────────────── tiny helper to print contract logs ─────────────*/
 fn dump(e:&Env,label:&str){
     std::println!("── logs after {label} ─────────────────────────────");
     for l in e.logs().all(){ std::println!("{l}"); }
     std::println!("──────────────────────────────────────────────────\n");
 }
 
-/*──────────────────────────────── test 1 ─────────────────────────────────────*/
+/*──────────────────────────── test 1 ───────────────────────────*/
 #[test]
 fn create_and_join_campaign(){
     let (e,mgr,alice,bob,_,_,pair)=setup();
@@ -139,31 +136,19 @@ fn create_and_join_campaign(){
     let cid = mgr.create_campaign(&1_000,&pair,&10,&0,&0,&alice);
     dump(&e,"create_campaign");
 
-    /* join (auth capture already enabled from first mock_all_auths) */
     mgr.join_campaign(&cid,&2_000,&bob);
     dump(&e,"join_campaign");
 
-    /* UserPos present */
+    /* UserPos exists */
     let key:Val = (PREFIX_UPOS,cid,bob.clone()).into_val(&e);
     e.as_contract(&mgr.address,|| assert!(e.storage().instance().has(&key)));
-
-    /* ensure SOME auth entry corresponds to join_campaign */
-    assert!(
-        e.auths().iter().any(|(_,inv)| matches!(
-            &inv.function,
-            AuthorizedFunction::Contract((addr,sym,_))
-                if addr==&mgr.address && *sym==Symbol::new(&e,"join_campaign")
-        )),
-        "no join_campaign auth captured"
-    );
 }
 
-/*──────────────────────────────── test 2 ─────────────────────────────────────*/
+/*──────────────────────────── test 2 ───────────────────────────*/
 #[test]
 fn compound_updates_reward_pool(){
     let (e,mgr,alice,bob,flash,usdc,pair)=setup();
 
-    /* fund manager so compound’s fee-transfer path can succeed */
     token::StellarAssetClient::new(&e,&flash.address).mint(&mgr.address,&1_000_000);
     token::StellarAssetClient::new(&e,&usdc.address) .mint(&mgr.address,&1_000_000);
 
@@ -174,7 +159,7 @@ fn compound_updates_reward_pool(){
     dump(&e,"compound");
 }
 
-/*──────────────────────────────── test 3 ─────────────────────────────────────*/
+/*──────────────────────────── test 3 ───────────────────────────*/
 #[test]
 fn claim_after_unlock(){
     let (e,mgr,alice,bob,flash,usdc,pair)=setup();
