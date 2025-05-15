@@ -370,3 +370,6 @@ impl Manager for FlashCampaignManager {
         set_u32(&e,KEY_TTLB,bump_);
     }
 }
+
+#[cfg(test)]
+mod test;
