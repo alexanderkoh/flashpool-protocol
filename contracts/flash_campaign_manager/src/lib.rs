@@ -84,7 +84,7 @@ pub struct UserPos { lp: i128, weight: i128 }
 //───────────────────────────────────────────────────────────────
 // Math helper
 //───────────────────────────────────────────────────────────────
-fn int_sqrt(mut x: u128) -> u128 {
+fn int_sqrt(x: u128) -> u128 {
     if x <= 1 { return x }
     let mut z = x;
     let mut y = (x >> 1) + 1;
@@ -118,7 +118,7 @@ fn save_camp(e:&Env,id:u32,c:&Campaign){
 }
 
 //───────────────────────────────────────────────────────────────
-// Swap helper (USDC → FLASH in a given pair)
+// Swap helper (USDC → FLASH)
 //───────────────────────────────────────────────────────────────
 fn swap_usdc_to_flash(
     e:&Env, pair:&Address, usdc_amt:i128, flash:Address, usdc:Address
@@ -134,7 +134,7 @@ fn swap_usdc_to_flash(
 }
 
 //───────────────────────────────────────────────────────────────
-// Interface trait
+// Interface
 //───────────────────────────────────────────────────────────────
 pub trait Manager {
     fn initialize         (e:Env, admin:Address, flash:Address, usdc:Address);
@@ -165,7 +165,7 @@ impl Manager for FlashCampaignManager {
         bump(&e);
         ensure!(&e, !e.storage().instance().has(&s(&e,KEY_ADMIN)), FlashErr::AlreadyInit);
 
-        admin.require_auth();                 // admin must sign init
+        admin.require_auth();
         set_addr(&e,KEY_ADMIN,&admin);
         set_addr(&e,KEY_FLASH,&flash);
         set_addr(&e,KEY_USDC ,&usdc );
@@ -194,27 +194,27 @@ impl Manager for FlashCampaignManager {
         let surplus_bps = get_u32(&e,KEY_SURP,DEFAULT_SURPLUS_BPS);
         ensure!(&e, surplus_bps < MAX_BPS, FlashErr::BpsOutOfRange);
 
-        // 1 pull fee
+        // 1 fee
         TokenClient::new(&e,&usdc)
             .transfer(&creator,&e.current_contract_address(),&fee_usdc);
 
-        // 2 reserves before swap
+        // 2 reserves
         let pcli = pair::Client::new(&e,&target_pair);
         let (rf0,ru0) = pcli.get_reserves();
 
-        // 3 split fee
+        // 3 split
         let s_min = int_sqrt((ru0 as u128)*(ru0 as u128 + fee_usdc as u128)) as i128 - ru0;
         let s     = (s_min + fee_usdc*surplus_bps as i128 / MAX_BPS as i128).min(fee_usdc);
         let l     = fee_usdc - s;
 
-        // 4 swap s USDC → FLASH
+        // 4 swap
         TokenClient::new(&e,&usdc)
             .transfer(&e.current_contract_address(),&target_pair,&s);
         let flash_out = rf0.checked_mul(s).unwrap().checked_div(ru0+s).unwrap();
         let (o0,o1) = if flash<usdc {(flash_out,0)} else {(0,flash_out)};
         pcli.swap(&o0,&o1,&e.current_contract_address());
 
-        // 5 liquidity maths
+        // 5 pair
         let ru_swap = ru0 + s;
         let rf_swap = rf0 - flash_out;
         let flash_need = l.checked_mul(rf_swap).unwrap().checked_div(ru_swap).unwrap();
@@ -233,7 +233,7 @@ impl Manager for FlashCampaignManager {
         let lp_minted = pcli.deposit(&e.current_contract_address());
         ensure!(&e, lp_minted > 0, FlashErr::Math);
 
-        // 6 safe-emission cap
+        // 6 cap
         let ru1 = ru_swap + l;
         let rf1 = rf_swap + flash_need;
         let root = int_sqrt(
@@ -246,8 +246,8 @@ impl Manager for FlashCampaignManager {
         let surplus = flash_out + donated - flash_need;
         let reward_flash = surplus.min(x_max);
 
-        // 7 persist campaign
-        let mut id = get_u32(&e,KEY_NEXT,0) + 1;
+        // 7 store
+        let id = get_u32(&e,KEY_NEXT,0) + 1;
         set_u32(&e,KEY_NEXT,id);
         let camp = Campaign{
             pair:target_pair.clone(), duration:unlock,
@@ -322,7 +322,7 @@ impl Manager for FlashCampaignManager {
             let (f0,f1) = pcli.withdraw(&e.current_contract_address());
             let flash = get_addr(&e,KEY_FLASH); let usdc = get_addr(&e,KEY_USDC);
             let mut gain = 0i128;
-            if t0==flash { gain += f0; } else if t0==usdc { gain += swap_usdc_to_flash(&e,&c.pair,f0,flash,usdc); }
+            if t0==flash { gain += f0; } else if t0==usdc { gain += swap_usdc_to_flash(&e,&c.pair,f0,flash.clone(),usdc.clone()); }
             if t1==flash { gain += f1; } else if t1==usdc { gain += swap_usdc_to_flash(&e,&c.pair,f1,flash,usdc); }
             c.reward_flash += gain;
         }
