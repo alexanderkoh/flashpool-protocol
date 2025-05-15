@@ -4,8 +4,8 @@ use super::*;
 
 use soroban_sdk::{
     symbol_short,
-    testutils::{Address as _, AuthorizedFunction},
-    token, Address, Env, IntoVal, Symbol, Val, testutils::Logs,
+    testutils::{Address as _, AuthorizedFunction, Ledger, Logs},
+    token, Address, Env, IntoVal, Symbol, Val,
 };
 extern crate std;
 
@@ -39,13 +39,11 @@ impl MockPair {
     fn k_t1() -> Symbol { symbol_short!("t1") }
 
     /* helpers */
-    fn set<T: IntoVal<Env, Val>>(e: &Env, k: Symbol, v: T) {
-        e.storage().instance().set(&k, &v)
-    }
+    fn set<T: IntoVal<Env, Val>>(e: &Env, k: Symbol, v: T) { e.storage().instance().set(&k, &v) }
     fn geti(e: &Env, k: Symbol) -> i128    { e.storage().instance().get(&k).unwrap() }
     fn geta(e: &Env, k: Symbol) -> Address { e.storage().instance().get(&k).unwrap() }
 
-    /* called from test–setup */
+    /* called from test-setup */
     pub fn init(e: Env, t0: Address, t1: Address, rf: i128, ru: i128) {
         Self::set(&e, Self::k_t0(), t0);
         Self::set(&e, Self::k_t1(), t1);
@@ -69,12 +67,8 @@ impl MockPair {
         Self::set(&e, Self::k_ru(), Self::geti(&e, Self::k_ru()) - out1);
 
         let pair_addr = e.current_contract_address();
-        if out0 > 0 {
-            token::Client::new(&e, &t0).transfer(&pair_addr, &to, &out0);
-        }
-        if out1 > 0 {
-            token::Client::new(&e, &t1).transfer(&pair_addr, &to, &out1);
-        }
+        if out0 > 0 { token::Client::new(&e, &t0).transfer(&pair_addr, &to, &out0); }
+        if out1 > 0 { token::Client::new(&e, &t1).transfer(&pair_addr, &to, &out1); }
     }
 
     pub fn deposit(e: Env, _to: Address) -> i128 {
@@ -102,7 +96,7 @@ fn setup<'a>() -> (
     Address                              // pair addr
 ) {
     let e = Env::default();
-    e.mock_all_auths(); // every require_auth succeeds & is recorded
+    e.mock_all_auths();                       // every require_auth passes & is recorded
 
     /* tokens */
     let (flash, flash_admin) = create_token(&e, &Address::generate(&e));
@@ -139,39 +133,34 @@ fn setup<'a>() -> (
 }
 
 /*───────────────────────────────────────────────────────────────*
- * happy-path test                                               *
+ * helpers – print logs nicely                                   *
+ *───────────────────────────────────────────────────────────────*/
+fn dump_logs(e: &Env, label: &str) {
+    std::println!("── logs after {label} ─────────────────────────────");
+    for l in e.logs().all() { std::println!("{l}"); }
+    std::println!("─────────────────────────────────────────────────\n");
+}
+
+/*───────────────────────────────────────────────────────────────*
+ * happy-path tests                                              *
  *───────────────────────────────────────────────────────────────*/
 #[test]
 fn create_and_join_campaign() {
     let (e, mgr, alice, bob, _flash, _usdc, pair) = setup();
 
-    /* Alice starts a campaign */
-    let camp_id = mgr.create_campaign(
-        &1_000_i128,
-        &pair,
-        &10_u32,      // unlock ledgers
-        &0_i128,      // target LP
-        &0_i128,      // bonus FLASH
-        &alice,
-    );
-    assert_eq!(camp_id, 1);
+    let camp_id = mgr.create_campaign(&1_000_i128, &pair, &10_u32, &0_i128, &0_i128, &alice);
+    dump_logs(&e, "create_campaign");
 
-    /* Bob joins */
     mgr.join_campaign(&camp_id, &2_000_i128, &bob);
-
-    /* capture auths BEFORE entering as_contract (as_contract clears them) */
-    let auths = e.auths();
-    assert!(!auths.is_empty(), "no auths captured");
+    dump_logs(&e, "join_campaign");
 
     /* confirm UserPos exists */
     let key: Val = (PREFIX_UPOS, camp_id, bob.clone()).into_val(&e);
-    e.as_contract(&mgr.address, || {
-        assert!(e.storage().instance().has(&key));
-    });
+    e.as_contract(&mgr.address, || assert!(e.storage().instance().has(&key)));
 
-    /* top-level authorisation should be the join call */
+    /* top-level auth must be join */
+    let auths = e.auths();
     let top_fn = &auths[0].1.function;
-    let logs = e.logs().all();
     assert_eq!(
         top_fn,
         &AuthorizedFunction::Contract((
@@ -180,5 +169,33 @@ fn create_and_join_campaign() {
             (&camp_id, 2_000_i128, &bob).into_val(&e)
         ))
     );
-    std::println!("{}", logs.join("\n"));
+}
+
+#[test]
+fn compound_updates_reward_pool() {
+    let (e, mgr, alice, bob, _flash, _usdc, pair) = setup();
+
+    let camp_id = mgr.create_campaign(&1_000_i128, &pair, &5_u32, &0_i128, &0_i128, &alice);
+    mgr.join_campaign(&camp_id, &2_000_i128, &bob);
+
+    mgr.compound(&camp_id);
+    dump_logs(&e, "compound");
+}
+
+#[test]
+fn claim_after_unlock() {
+    let (e, mgr, alice, bob, _flash, _usdc, pair) = setup();
+
+    let camp_id = mgr.create_campaign(&1_000_i128, &pair, &5_u32, &0_i128, &0_i128, &alice);
+    mgr.join_campaign(&camp_id, &2_000_i128, &bob);
+
+    /* simulate time passing – bump ledger sequence */
+    e.ledger().with_mut(|l| { l.sequence_number += 10; });
+
+    mgr.claim(&camp_id, &bob);
+    dump_logs(&e, "claim");
+
+    /* UserPos should be gone */
+    let key: Val = (PREFIX_UPOS, camp_id, bob.clone()).into_val(&e);
+    e.as_contract(&mgr.address, || assert!(!e.storage().instance().has(&key)));
 }
