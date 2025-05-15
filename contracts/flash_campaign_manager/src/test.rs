@@ -5,8 +5,9 @@ use super::*;
 use soroban_sdk::{
     symbol_short,
     testutils::{Address as _, AuthorizedFunction},
-    token, Address, Env, IntoVal, Symbol, Val,
+    token, Address, Env, IntoVal, Symbol, Val, testutils::Logs,
 };
+extern crate std;
 
 /*───────────────────────────────────────────────────────────────*
  * helpers – deploy a reference token contract                   *
@@ -170,6 +171,7 @@ fn create_and_join_campaign() {
 
     /* top-level authorisation should be the join call */
     let top_fn = &auths[0].1.function;
+    let logs = e.logs().all();
     assert_eq!(
         top_fn,
         &AuthorizedFunction::Contract((
@@ -178,4 +180,5 @@ fn create_and_join_campaign() {
             (&camp_id, 2_000_i128, &bob).into_val(&e)
         ))
     );
+    std::println!("{}", logs.join("\n"));
 }
