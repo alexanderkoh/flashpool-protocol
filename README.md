@@ -124,7 +124,7 @@ launchtube: latest
 **Deployed contract IDs on Stellar Expert:**
 
 ```text
-https://stellar.expert/explorer/public/contract/CA6ZUMVZ4BBEH3NGJ4G33IXKQPDVOWJQ2DMU5Z3SCIISVMT2NL2WCNDC (CampaignManager V1)
+[https://stellar.expert/explorer/public/contract/CA6ZUMVZ4BBEH3NGJ4G33IXKQPDVOWJQ2DMU5Z3SCIISVMT2NL2WCNDC]
 ```
 
 **Optional: Link to deployed front-end:**
@@ -163,7 +163,7 @@ FlashPool is a liquidity incentive protocol on Soroban enabling token campaigns 
 ### Design Choices
 **Reward Distribution Logic**
 
-## 4. Reward Distribution Logic
+## Reward Distribution Logic
 
 The FlashPool protocol distributes rewards using a **hybrid model** that blends:
 
@@ -181,7 +181,7 @@ Let:
 - $B$ = boost multiplier (e.g., 1.25 if within boost window)  
 - $\gamma$ = rank decay steepness (e.g., 1 for 1/r, 2 for 1/r²)
 
-### **4.1. Rank-Based Weighting**
+### **Rank-Based Weighting**
 
 Each user receives a reward weight based on the **order** in which they joined the campaign. The first depositor gets the highest weight, the second gets less, and so on.
 
@@ -191,7 +191,7 @@ $$
 \mathrm{rankWeight}_i = \frac{1}{r_i^\gamma}
 $$
 
-### **4.2. Boost Window Modifier**
+### **Boost Window Modifier**
 
 To maintain energy throughout the Flash Event, the curator can define **a time-based boost window** (e.g., hours 6–8 in a 24h sale).
 
@@ -207,7 +207,7 @@ $$
 
 This creates **multiple engagement peaks** — one at the start, and one at the boost window.
 
-### **4.3. Contribution Proportion**
+### **Contribution Proportion**
 
 Users who deposit more (up to the target) receive more rewards. Deposits that go beyond the fundraising target **do not yield additional reward weight**, to prevent whales from dominating.
 
@@ -215,7 +215,7 @@ $$
 \mathrm{contribWeight}_i = \min\left(1, \frac{D_i}{P}\right)
 $$
 
-### **4.4. Final Score Formula**
+### **Final Score Formula**
 
 All components are multiplied together to get the user’s score:
 
