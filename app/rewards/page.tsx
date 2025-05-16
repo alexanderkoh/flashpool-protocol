@@ -84,16 +84,10 @@ export default function RewardsPage() {
               
               <TabsContent value="active" className="space-y-4">
                 <RewardsPoolCard 
-                  poolName="USDC/TBT"
-                  earned={245.21}
-                  progress={65}
-                  daysLeft={12}
-                />
-                <RewardsPoolCard 
-                  poolName="ETH/FLASH"
-                  earned={211.00}
-                  progress={38}
-                  daysLeft={19}
+                  poolName="XLM/USDC"
+                  earned={100}
+                  progress={50}
+                  daysLeft={3}
                 />
               </TabsContent>
               
