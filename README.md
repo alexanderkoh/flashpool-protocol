@@ -130,7 +130,8 @@ launchtube: latest
 **Optional: Link to deployed front-end:**
 
 ```text
-[Deployed Front-end Link](https://flashpool.xyz)
+[Deployed Front-end Link](https://flashpool.app)
+[Deployed Front-end Link 2](https://flashpool.xyz)
 [Fallback Front-end Link](https://flash.stellar.red)
 ```
 
