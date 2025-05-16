@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import {
   StellarWalletsKit,
   WalletNetwork,
@@ -12,7 +12,7 @@ import {
 import { Networks } from '@stellar/stellar-sdk';
 
 // --- Configuration ---
-const APP_NETWORK = WalletNetwork.TESTNET; // Or WalletNetwork.PUBLIC
+const APP_NETWORK = process.env.network ?? WalletNetwork.TESTNET; // Or WalletNetwork.PUBLIC
 const STELLAR_NETWORK_PASSPHRASE = APP_NETWORK === WalletNetwork.PUBLIC ? Networks.PUBLIC : Networks.TESTNET;
 const APP_NAME = 'FlashPool'; // As per your README
 
@@ -27,7 +27,7 @@ interface StellarWalletContextType {
 
 const StellarWalletContext = createContext<StellarWalletContextType | undefined>(undefined);
 
-export function StellarWalletsKitProvider({ children }: { children: React.ReactNode }) {
+export function StellarWalletsKitProvider({ children }: { children: ReactNode }) {
   const [kit, setKit] = useState<StellarWalletsKit | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
