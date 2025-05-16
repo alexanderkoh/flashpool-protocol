@@ -9,7 +9,7 @@ import {
   XBULL_ID,
   // Potentially import specific wallet IDs if needed for a default, e.g., FREIGHTER_ID
 } from '@creit.tech/stellar-wallets-kit';
-import { Networks } from 'stellar-sdk';
+import { Networks } from '@stellar/stellar-sdk';
 
 // --- Configuration ---
 const APP_NETWORK = WalletNetwork.TESTNET; // Or WalletNetwork.PUBLIC
