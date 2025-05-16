@@ -1,43 +1,43 @@
 # nixpacks.toml - Configuration for Nixpacks
 
 # Providers can be used to select the language version and install system dependencies.
-[providers]
+# Top-level array of providers to use
+providers = ["node", "apt"]
+
+# Provider settings
+[settings.node]
 # Specify the desired Node.js version.
 # Let's use a recent LTS version that satisfies the >=20.18.0 requirement.
-node = "20"
+version = "20"
+
+[settings.apt]
 # Install system packages needed for building native Node modules.
 # python3: For node-gyp
 # build-essential: Provides make, g++, etc., for compilation
 # libudev-dev: Often a dependency for the 'usb' package on Linux
-apt = ["python3", "build-essential", "libudev-dev"]
+pkgs = ["python3", "build-essential", "libudev-dev"]
 
 # Define phases for the build process
 [phases.setup]
-# Nixpacks will use the 'node' provider specified above.
-# It will also install the 'apt' packages.
-# If you have a .node-version or .nvmrc file, Nixpacks might pick it up,
-# but explicitly setting it in [providers] is more robust.
-nixPkgs = [] # You can also specify Nix packages here if needed
-aptPkgs = ["python3", "build-essential", "libudev-dev"] # Redundant if using [providers].apt but good for clarity or older Nixpacks versions.
+# nixPkgs and aptPkgs are now primarily handled by the providers and settings above.
+# You can leave this section empty or remove it if not needed for other setup steps.
+nixPkgs = []
+# aptPkgs = [] # Commented out as it's handled by [settings.apt]
 
 [phases.install]
 # This phase typically runs 'npm install' or 'npm ci'.
-# The dependencies installed here (python3, build-essential) should be available.
-# You can override the command if necessary, but default is usually fine.
+# The dependencies installed here (python3, build-essential from apt) should be available.
+# Default command is usually fine.
 # cmds = ["npm ci"]
 
 [phases.build]
 # Your log shows NIXPACKS_BUILD_CMD="npm run dev" is being used.
-# If 'npm run dev' is for development, you might want 'npm run build' for production.
-# buildCmd = "npm run build"
+# Nixpacks will use this environment variable for the build command.
+# If you wanted to override it here, you could use:
+# cmds = ["npm run dev"]
 
 [start]
 # Define the command to start your application after the build.
-# This depends on how your application is structured.
-# Example: startCmd = "npm start" or "node dist/main.js"
-# Your current setup uses NIXPACKS_BUILD_CMD="npm run dev" which might also be your start command if it runs a server.
-# If "npm run dev" is your intended start command for the deployed service,
-# you might not need to set startCmd here if Coolify handles it based on NIXPACKS_BUILD_CMD.
-# However, it's good practice to have a dedicated start script in package.json (e.g., "start": "node server.js")
-# and reference it here:
-# startCmd = "npm run start"
+# If "npm run dev" is your intended start command:
+cmd = "npm run dev"
+# Otherwise, Nixpacks often defaults to "npm start" for Node.js applications.
