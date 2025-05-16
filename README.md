@@ -252,7 +252,7 @@ Campaigns are stored by ID. Each campaign stores start/end times, boost params, 
 **Passkey Implementation:**
 
 ```text
-Passkey-kit is scaffolded. The goal is to allow biometric login and in-browser auth without modal popups or external redirects.
+Passkey-kit is scaffolded in /passkeys branch. The goal is to allow biometric login and in-browser auth without modal popups or external redirects.
 ```
 
 **Issues Overcome:**
