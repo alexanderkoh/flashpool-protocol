@@ -39,4 +39,5 @@ next-env.d.ts
 contracts/target/debug
 
 # Rust build artifacts
-contracts/target/
+contracts/target/debug
+**/.stellar
