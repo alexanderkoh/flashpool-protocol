@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 interface CampaignCardProps {
   name: string;
   pair: string;
+  platform?: string;
   durationHours: number;
   rewardToken: string;
   rewards: number;
@@ -21,6 +22,7 @@ interface CampaignCardProps {
 export function CampaignCard({
   name,
   pair,
+  platform,
   durationHours,
   rewardToken,
   rewards,
@@ -54,7 +56,8 @@ export function CampaignCard({
             </Badge>
           )}
         </div>
-        <p className="text-sm text-muted-foreground mb-6">{pair} Pair</p>
+        <p className="text-sm text-muted-foreground mb-1">{pair} Pair</p>
+        {platform && <p className="text-xs text-muted-foreground mb-6">Platform: {platform}</p>}
         
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div>

@@ -1,0 +1,43 @@
+# nixpacks.toml - Configuration for Nixpacks
+
+# Define the main providers to use. We'll only list 'node' here.
+providers = ["node"]
+
+# --- Provider Settings ---
+
+# Settings for the 'node' provider
+[settings.node]
+# Specify the desired Node.js version.
+# Let's use a recent LTS version that satisfies the >=20.18.0 requirement.
+version = "20"
+
+# --- Build Phases ---
+
+# Setup phase: Install system dependencies here using aptPkgs.
+[phases.setup]
+# Nix packages (if any)
+nixPkgs = []
+# Apt packages for system dependencies
+aptPkgs = [
+  "python3",          # For node-gyp, which the 'usb' package needs
+  "build-essential",  # For C/C++ compilation tools (make, g++, etc.)
+  "libudev-dev"       # Often a system dependency for the 'usb' package on Linux
+]
+
+# Install phase: This is where 'npm install' or 'npm ci' typically runs.
+[phases.install]
+# Nixpacks will automatically run 'npm ci' if a package-lock.json or yarn.lock is found,
+# otherwise 'npm install'. This is usually the correct default.
+# cmds = ["npm ci"] # You can override if needed, but default is likely fine.
+
+# Build phase: This is where your application is compiled/built.
+[phases.build]
+# The command to build your application.
+# As you've removed the NIXPACKS_BUILD_CMD environment variable (good!),
+# this will be the command used.
+cmds = ["npm run dev"] # Assuming 'npm run dev' is your build command
+
+# Start phase: This defines how to run your application after it's built.
+[start]
+# The command to start your application.
+cmd = "npm run dev" # Assuming 'npm run dev' also starts your server

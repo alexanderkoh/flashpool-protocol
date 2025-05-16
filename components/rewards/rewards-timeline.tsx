@@ -3,11 +3,7 @@ import { Progress } from "@/components/ui/progress";
 export function RewardsTimeline() {
   // Mock data for rewards unlock timeline
   const timelineData = [
-    { date: 'May 5', value: 102.45, unlocked: true },
-    { date: 'May 12', value: 122.34, unlocked: true },
-    { date: 'May 19', value: 124.67, unlocked: true },
-    { date: 'May 26', value: 106.75, unlocked: false, current: true },
-    { date: 'Jun 2', value: 0, unlocked: false },
+    { date: 'May 18', value: 456.21, unlocked: false, current: true },
   ];
   
   // Calculate progress
