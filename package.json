@@ -55,6 +55,7 @@
     "lucide-react": "^0.446.0",
     "next": "^15.3.2",
     "next-themes": "^0.3.0",
+    "passkey-kit": "^0.10.24",
     "postcss": "^8.5.3",
     "react": "18.2.0",
     "react-day-picker": "^8.10.1",

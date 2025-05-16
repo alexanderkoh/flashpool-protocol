@@ -5,6 +5,12 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   images: { unoptimized: true },
+  transpilePackages: [
+    'passkey-kit',
+    'passkey-factory-sdk',
+    'passkey-kit-sdk',
+    'sac-sdk',
+  ],
 };
 
 module.exports = nextConfig;
