@@ -1,7 +1,7 @@
 # nixpacks.toml - Configuration for Nixpacks
 
-# Providers can be used to select the language version and install system dependencies.
-# Top-level array of providers to use
+# Define the providers to use. This MUST be an array assigned to the 'providers' key.
+# Ensure this line is exactly as follows and not, for example, "[providers]".
 providers = ["node", "apt"]
 
 # Provider settings
@@ -34,7 +34,7 @@ nixPkgs = []
 # Your log shows NIXPACKS_BUILD_CMD="npm run dev" is being used.
 # Nixpacks will use this environment variable for the build command.
 # If you wanted to override it here, you could use:
-# cmds = ["npm run dev"]
+cmds = ["npm run dev"]
 
 [start]
 # Define the command to start your application after the build.
