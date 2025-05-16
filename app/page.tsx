@@ -60,7 +60,7 @@ export default function Home() {
               <GlassPanel className="p-6 md:p-8 relative overflow-hidden border border-primary/20">
                 <div className="absolute top-0 right-0 w-40 h-40 bg-primary/20 blur-3xl rounded-full -translate-y-1/2 translate-x-1/2"></div>
                 <Image 
-                  src="https://images.pexels.com/photos/8370752/pexels-photo-8370752.jpeg" 
+                  src="/clock.png" 
                   alt="FlashPool Dashboard Preview"
                   width={600} 
                   height={400}
