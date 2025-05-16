@@ -39,7 +39,12 @@ export function StellarWalletsKitProvider({ children }: { children: ReactNode })
     const initialSelectedWalletId = isValidStoredWalletId ? storedWalletId : XBULL_ID;
     
     const newKit = new StellarWalletsKit({
-      network: APP_NETWORK,
+      network: APP_NETWORK === 'PUBLIC' ? WalletNetwork.PUBLIC : 
+           APP_NETWORK === 'TESTNET' ? WalletNetwork.TESTNET :
+           APP_NETWORK === 'FUTURENET' ? WalletNetwork.FUTURENET :
+           APP_NETWORK === 'SANDBOX' ? WalletNetwork.SANDBOX :
+           APP_NETWORK === 'STANDALONE' ? WalletNetwork.STANDALONE :
+           WalletNetwork.TESTNET,
       selectedWalletId: initialSelectedWalletId,
       modules: allowAllModules(),
     });
