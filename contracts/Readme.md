@@ -55,3 +55,5 @@ Gas profiling – the happy paths fit comfortably, but compaction may help
 Production token contracts – replace the reference stellar-asset token in tests with real deployments
 
 Enjoy hacking! 🚀
+
+a deployment of the contract can be found at CAGZUMVZ4BBEH5NG34633IXKQPDVOWJQ2DMUSZ3SCIISVMT2NL2NCNDC on public
