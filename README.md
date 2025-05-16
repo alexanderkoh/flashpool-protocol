@@ -1,6 +1,16 @@
 # FlashPool: Decentralized Liquidity Campaign Platform
 
+![FlashPool Diagram](https://github.com/alexanderkoh/flashpool-protocol/raw/main/flashpool.png)
+
 FlashPool is a platform designed to enable users to create and participate in liquidity incentive campaigns for various token pairs, with rewards distributed in FLASH tokens. It aims to provide a user-friendly interface for launching campaigns, exploring active campaigns, and managing wallet connections for participation.
+
+## Quick Demo
+
+![FlashPool in Action](https://github.com/alexanderkoh/flashpool-protocol/raw/main/flashpool_gif.gif)
+
+## Video Demo
+
+https://youtu.be/KtmUlvNVPd4
 
 ## Tech Stack
 
