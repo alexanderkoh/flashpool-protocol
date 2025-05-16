@@ -12,6 +12,10 @@ FlashPool is a platform designed to enable users to create and participate in li
 
 https://youtu.be/KtmUlvNVPd4
 
+## Technical Architecture Diagram
+
+![Architecture Diagram](https://github.com/alexanderkoh/flashpool-protocol/blob/main/flow_final.png)
+
 ## Tech Stack
 
 *   **Framework:** Next.js (App Router)
