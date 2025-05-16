@@ -1,7 +1,5 @@
 # Stellar Toronto Builder Summit—EasyA Consensus Hackathon 2025
 
-## Hackathon Submission Template
-
 ## FlashPool: Decentralized Liquidity Campaign Platform
 
 ![FlashPool Diagram](https://github.com/alexanderkoh/flashpool-protocol/raw/main/flashpool.png)
