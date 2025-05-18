@@ -15,7 +15,7 @@ use soroban_sdk::{
 
 // bring the real Soroswap pair WASM (for on-chain build)
 pub mod pair {
-    soroban_sdk::contractimport!(file = "soroswap-contracts/soroswap_pair.wasm");
+    soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/soroswap_pair.wasm");
 }
 
 // -------------------------------------------------------------
@@ -355,7 +355,7 @@ fn claim(e:Env,id:u32, user:Address){
     TokenClient::new(&e,&c.pair).transfer(&e.current_contract_address(),&user,&up.lp);
     e.storage().instance().remove(&key);
 
-    log!(&e, "[CLAIM] id {} user {:?} flash {} lp {}", id, user, total, up.lp);
+    log!(&e, "[CLAIM] id {:?} user {:?} flash {:?} lp {:?}", id, user, total, up.lp);
 }
 
 // ------------------------------------------- admin helpers ----
