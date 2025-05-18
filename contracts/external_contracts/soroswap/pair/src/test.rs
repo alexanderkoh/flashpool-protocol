@@ -30,7 +30,7 @@ fn create_token_contract<'a>(e: &Env) -> TokenClient<'a> {
 
 // FACTORY CONTRACT
 mod factory {
-    soroban_sdk::contractimport!(file = "../../../target/wasm32v1-none/release/factory.wasm");
+    soroban_sdk::contractimport!(file = "../../../target/wasm32v1-none/release/soroswap_factory.wasm");
     pub type SoroswapFactoryClient<'a> = Client<'a>;
 }
 use factory::SoroswapFactoryClient;
