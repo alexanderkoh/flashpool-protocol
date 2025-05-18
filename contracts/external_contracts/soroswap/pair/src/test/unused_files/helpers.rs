@@ -17,14 +17,14 @@ use soroban_sdk::{
 };
 
 pub mod token {
-    soroban_sdk::contractimport!(file = "../token/target/wasm32-unknown-unknown/release/soroban_token_contract.wasm");
+    soroban_sdk::contractimport!(file = "../../../target/wasm32v1-none/release/soroban_token_contract.wasm");
     pub type TokenClient<'a> = Client<'a>;
 }
 pub mod pair {
-    soroban_sdk::contractimport!(file = "./target/wasm32-unknown-unknown/release/soroswap_pair.wasm");
+    soroban_sdk::contractimport!(file = "../../../target/wasm32v1-none/release/soroswap_pair.wasm");
 }
 pub mod factory {
-    soroban_sdk::contractimport!(file = "../factory/target/wasm32-unknown-unknown/release/soroswap_factory.wasm");
+    soroban_sdk::contractimport!(file = "../../../target/wasm32v1-none/release/soroswap_factory.wasm");
     pub type FactoryClient<'a> = Client<'a>; 
 }
 
