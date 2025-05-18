@@ -37,7 +37,6 @@ next-env.d.ts
 **/test_snapshots
 **/target/debug
 contracts/target/debug
-
-# Rust build artifacts
-contracts/target/debug
 **/.stellar
+contracts/target/*
+!target/wasm32v1-none/release/*.wasm
