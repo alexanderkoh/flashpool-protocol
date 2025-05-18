@@ -40,3 +40,4 @@ contracts/target/debug
 **/.stellar
 contracts/target/*
 !target/wasm32v1-none/release/*.wasm
+!target/wasm32v1-none/release/deps/*.wasm
