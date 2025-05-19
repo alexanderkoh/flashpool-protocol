@@ -7,7 +7,7 @@ use num_integer::Roots;
 #[test]
 fn fee_off() {
     let test = SoroswapPairTest::setup();    
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -44,7 +44,7 @@ fn fee_off() {
 #[test]
 fn fee_on_add_swap_remove() {
     let test = SoroswapPairTest::setup();    
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.factory.set_fees_enabled(&true);
     assert_eq!(test.factory.fees_enabled(), true);
     assert_eq!(test.factory.fee_to(), test.admin);
@@ -160,7 +160,7 @@ fn fee_on_add_swap_remove() {
 #[test]
 fn fee_on_add_swap_add() {
     let test = SoroswapPairTest::setup();    
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.factory.set_fees_enabled(&true);
     assert_eq!(test.factory.fees_enabled(), true);
     assert_eq!(test.factory.fee_to(), test.admin);

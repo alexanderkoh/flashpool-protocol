@@ -50,7 +50,7 @@ pub enum SoroswapClient<'a, T> {
 impl<'a> SoroswapClient<'a, TokenClient<'a>> {
     // initialize
     pub fn from(env: &'a Env, alice: &Address) -> SoroswapClient<'a, TokenClient<'a>> {
-        Self::TokenClient(&env, TokenClient::new(&env, &env.register_stellar_asset_contract(alice.clone())))
+        Self::TokenClient(&env, TokenClient::new(&env, &env.register_stellar_asset_contract_v2(alice.clone())))
     }
     pub fn from_token_address(env: &'a Env, token_address: &Address) -> SoroswapClient<'a, TokenClient<'a>> {
         Self::TokenClient(&env, TokenClient::new(&env, token_address))

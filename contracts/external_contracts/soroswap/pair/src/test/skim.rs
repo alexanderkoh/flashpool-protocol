@@ -5,7 +5,7 @@ use crate::test::{SoroswapPairTest};
 fn skim_nothing() {
     // zero tokens are being sent
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.skim(&test.user);
 }
 
@@ -13,7 +13,7 @@ fn skim_nothing() {
 fn skim_with_liquidity_nothing_to_skim() {
     // zero tokens are being sent
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
 
     let original_0: i128 = test.token_0.balance(&test.user);
@@ -44,7 +44,7 @@ fn skim_with_liquidity_nothing_to_skim() {
 fn skim() {
     // zero tokens are being sent
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
 
     let original_0: i128 = test.token_0.balance(&test.user);

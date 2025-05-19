@@ -73,5 +73,5 @@ pub fn create_contract(
     // Use the deployer() method of the current environment to create a new contract instance
     e.deployer()
         .with_current_contract(token_pair.salt(&e)) // Use the salt as a unique identifier for the new contract instance
-        .deploy(pair_wasm_hash) // Deploy the new contract instance using the given pair_wasm_hash value
+    .deploy_v2(pair_wasm_hash, ())
 }

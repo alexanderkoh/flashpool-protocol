@@ -8,7 +8,7 @@ use crate::test::pair::SoroswapPairError;
 // #[should_panic(expected = "SoroswapPair: not yet initialized")]
 fn try_swap_not_yet_initialized() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     let result = test.contract.try_swap(&0, &0, &test.user);
     assert_eq!(result, Err(Ok(SoroswapPairError::NotInitialized)));
 }
@@ -17,7 +17,7 @@ fn try_swap_not_yet_initialized() {
 // #[should_panic(expected = "SoroswapPair: insufficient output amount")]
 fn try_swap_amounts_zero() {
     let test = SoroswapPairTest::setup();    
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let result = test.contract.try_swap(&0, &0, &test.user);
     assert_eq!(result, Err(Ok(SoroswapPairError::SwapInsufficientOutputAmount)));
@@ -27,7 +27,7 @@ fn try_swap_amounts_zero() {
 // #[should_panic(expected = "SoroswapPair: negatives dont supported")]
 fn try_swap_amount_0_negative() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let result = test.contract.try_swap(&-1, &1, &test.user);
     assert_eq!(result, Err(Ok(SoroswapPairError::SwapNegativesOutNotSupported)));
@@ -37,7 +37,7 @@ fn try_swap_amount_0_negative() {
 // #[should_panic(expected = "SoroswapPair: negatives dont supported")]
 fn try_swap_amount_1_negative() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let result = test.contract.try_swap(&1, &-1, &test.user);
     assert_eq!(result, Err(Ok(SoroswapPairError::SwapNegativesOutNotSupported)));
@@ -47,7 +47,7 @@ fn try_swap_amount_1_negative() {
 // #[should_panic(expected = "SoroswapPair: insufficient liquidity")]
 fn try_swap_no_liquidity() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let result = test.contract.try_swap(&1, &1, &test.user);
     assert_eq!(result, Err(Ok(SoroswapPairError::SwapInsufficientLiquidity)));
@@ -57,7 +57,7 @@ fn try_swap_no_liquidity() {
 // #[should_panic(expected = "SoroswapPair: invalid to")]
 fn try_swap_to_token_0() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -70,7 +70,7 @@ fn try_swap_to_token_0() {
 // #[should_panic(expected = "SoroswapPair: invalid to")]
 fn try_swap_to_token_1() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -84,7 +84,7 @@ fn try_swap_to_token_1() {
 // #[should_panic(expected = "SoroswapPair: insufficient input amount")]
 fn try_swap_token_0_insufficient_input() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -97,7 +97,7 @@ fn try_swap_token_0_insufficient_input() {
 // #[should_panic(expected = "SoroswapPair: insufficient input amount")]
 fn try_swap_token_1_insufficient_input() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -110,7 +110,7 @@ fn try_swap_token_1_insufficient_input() {
 // #[should_panic(expected = "SoroswapPair: K constant is not met")]
 fn try_swap_token_0_low_sent() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -124,7 +124,7 @@ fn try_swap_token_0_low_sent() {
 // #[should_panic(expected = "SoroswapPair: K constant is not met")]
 fn try_swap_token_1_low_sent() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -140,7 +140,7 @@ fn try_swap_token_1_low_sent() {
 fn swap_token_0() {
     let test = SoroswapPairTest::setup();
     // TODO: Get rid of this hack?
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     
     let original_0: i128 = test.token_0.balance(&test.user);
     let original_1: i128 = test.token_1.balance(&test.user);
@@ -178,7 +178,7 @@ fn swap_token_0() {
 #[test]
 fn swap_token_1() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     
     let original_0: i128 = test.token_0.balance(&test.user);
     let original_1: i128 = test.token_1.balance(&test.user);
@@ -215,7 +215,7 @@ fn swap_token_1() {
 // #[should_panic(expected = "SoroswapPair: K constant is not met")]
 fn try_swap_token_1_optimal_plus_1() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;

@@ -14,12 +14,11 @@ mod token {
 }
 use token::TokenClient;
 fn create_token_contract<'a>(e: &Env) -> TokenClient<'a> {
-    let token_address = &e.register_contract_wasm(None, token::WASM);
-    let token = TokenClient::new(e, token_address);
-    token
+    let token_address = &e.register(token::WASM, ());
+    TokenClient::new(e, token_address)
 }
 // fn create_token_contract<'a>(e: &'a Env, admin: &'a Address) -> TokenClient<'a> {
-//     TokenClient::new(&e, &e.register_stellar_asset_contract(admin.clone()))
+//     TokenClient::new(&e, &e.register_stellar_asset_contract_v2(admin.clone()))
 // }
 
 //  **** PAIR WASM ****
@@ -39,10 +38,11 @@ use pair::SoroswapPairClient;
 
 
 //  **** FACTORY CONTRACT (TO BE TESTED) **** 
-fn create_factory_contract<'a>(e: & Env) -> SoroswapFactoryClient<'a> {
-    let factory = SoroswapFactoryClient::new(e, &e.register_contract(None, crate::SoroswapFactory {}));
-    factory
+fn create_factory_contract<'a>(e: &Env) -> SoroswapFactoryClient<'a> {
+    let factory_address = &e.register(crate::SoroswapFactory {}, ());
+    SoroswapFactoryClient::new(e, &factory_address)
 }
+
 
 
 // THE TEST
@@ -87,7 +87,7 @@ impl<'a> SoroswapFactoryTest<'a> {
         let contract = create_factory_contract(&env);
 
         // TODO: Get rid of this hack?
-        env.budget().reset_unlimited();
+        env.cost_estimate().budget().reset_unlimited();
     
 
         SoroswapFactoryTest {

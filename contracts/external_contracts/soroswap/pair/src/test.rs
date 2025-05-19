@@ -1,19 +1,12 @@
 #![cfg(test)]
 extern crate std;
 use soroban_sdk::{
-    // symbol_short,
-    // testutils::{Events},
-    // Vec,
-    // Val,
-    // vec,
     testutils::{Address as _},
-    Address, 
-    BytesN, 
+    Address,
+    BytesN,
     Env,
     String,
-    // Symbol
 };
-//use crate::{SoroswapPairClient};
 
 // TOKEN CONTRACT
 mod token {
@@ -22,9 +15,8 @@ mod token {
 }
 use token::TokenClient;
 fn create_token_contract<'a>(e: &Env) -> TokenClient<'a> {
-    let token_address = &e.register_contract_wasm(None, token::WASM);
-    let token = TokenClient::new(e, token_address);
-    token
+    let token_address = &e.register(token::WASM, ());
+    TokenClient::new(e, token_address)
 }
 
 // FACTORY CONTRACT
@@ -33,34 +25,26 @@ mod factory {
     pub type SoroswapFactoryClient<'a> = Client<'a>;
 }
 use factory::SoroswapFactoryClient;
-
-fn create_factory_contract<'a>(e: & Env, setter: & Address,pair_wasm_hash: & BytesN<32>) -> SoroswapFactoryClient<'a> {
-    let factory_address = &e.register_contract_wasm(None, factory::WASM);
+fn create_factory_contract<'a>(e: &Env, setter: &Address, pair_wasm_hash: &BytesN<32>) -> SoroswapFactoryClient<'a> {
+    let factory_address = &e.register(factory::WASM, ());
     let factory = SoroswapFactoryClient::new(e, factory_address);
-    factory.initialize(&setter, pair_wasm_hash);
+    factory.initialize(setter, pair_wasm_hash);
     factory
 }
 
 // PAIR CONTRACT
-// WASM
 fn pair_token_wasm(e: &Env) -> BytesN<32> {
     soroban_sdk::contractimport!(file = "../../../target/wasm32v1-none/release/soroswap_pair.wasm");
     e.deployer().upload_contract_wasm(WASM)
 }
-
 pub mod pair {
     soroban_sdk::contractimport!(file = "../../../target/wasm32v1-none/release/soroswap_pair.wasm");
     pub type SoroswapPairClient<'a> = Client<'a>;
 }
 use pair::SoroswapPairClient;
-
-
-fn create_pair_contract<'a>(
-    e: & Env
-) -> SoroswapPairClient<'a> {
-    let pair_address = &e.register_contract_wasm(None, pair::WASM);
-    let pair_client = SoroswapPairClient::new(e, pair_address);
-    pair_client
+fn create_pair_contract<'a>(e: &Env) -> SoroswapPairClient<'a> {
+    let pair_address = &e.register(pair::WASM, ());
+    SoroswapPairClient::new(e, pair_address)
 }
 
 // THE TEST
@@ -73,10 +57,8 @@ pub struct SoroswapPairTest<'a> {
     factory: SoroswapFactoryClient<'a>,
     contract: SoroswapPairClient<'a>,
 }
-
 impl<'a> SoroswapPairTest<'a> {
     fn setup() -> Self {
-
         let env = Env::default();
         env.mock_all_auths();
         let user = Address::generate(&env);
@@ -86,30 +68,19 @@ impl<'a> SoroswapPairTest<'a> {
         if &token_1.address < &token_0.address {
             std::mem::swap(&mut token_0, &mut token_1);
         }
-        
         let name_0 = String::from_str(&env, "Token 0");
         let symbol_0 = String::from_str(&env, "TOK0");
         let name_1 = String::from_str(&env, "Token 1");
         let symbol_1 = String::from_str(&env, "ABCDEFGHIJ");
         let decimals = 7;
-
         token_0.initialize(&admin, &decimals, &name_0, &symbol_0);
         token_1.initialize(&admin, &decimals, &name_1, &symbol_1);
-
         token_0.mint(&user, &123_000_000_000_000_000_000);
         token_1.mint(&user, &321_000_000_000_000_000_000);
-
-        let pair_token_wasm_binding = pair_token_wasm(&env);  
+        let pair_token_wasm_binding = pair_token_wasm(&env);
         let factory = create_factory_contract(&env, &admin, &pair_token_wasm_binding);
-
-        let contract = create_pair_contract(
-            &env,
-        );
-
-        // TODO: Get rid of this hack?
-        env.budget().reset_unlimited();
-    
-
+        let contract = create_pair_contract(&env);
+        env.cost_estimate().budget().reset_unlimited();
         SoroswapPairTest {
             env,
             admin,
@@ -121,7 +92,6 @@ impl<'a> SoroswapPairTest<'a> {
         }
     }
 }
-           
 
 // Tests written by esteblock
 mod initialize;
@@ -142,4 +112,3 @@ mod soroswap_pair_token;
 // mod operations_helpers;
 // mod operations;
 // mod helpers;
-

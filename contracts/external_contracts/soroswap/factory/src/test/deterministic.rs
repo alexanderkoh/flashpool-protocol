@@ -58,8 +58,10 @@ impl<'a> SoroswapFactoryTest<'a> {
         env.mock_all_auths();
         let alice = Address::generate(&env);
         let bob = Address::generate(&env);
-        let mut token_0: TokenClient<'a> = TokenClient::new(&env, &env.register_stellar_asset_contract(alice.clone()));
-        let mut token_1: TokenClient<'a> = TokenClient::new(&env, &env.register_stellar_asset_contract(alice.clone()));
+        let token_0_contract = env.register_stellar_asset_contract_v2(alice.clone());
+        let mut token_0: TokenClient<'a> = TokenClient::new(&env, &token_0_contract.address());
+        let token_1_contract = env.register_stellar_asset_contract_v2(alice.clone());
+        let mut token_1: TokenClient<'a> = TokenClient::new(&env, &token_1_contract.address());
         if &token_1.address < &token_0.address {
             mem::swap(&mut token_0, &mut token_1);
         } else 
@@ -71,7 +73,8 @@ impl<'a> SoroswapFactoryTest<'a> {
         // 
         // let factory_address = &env.register_contract_wasm(None, factory::WASM);
         //
-        let factory_address = &env.register_contract(None, SoroswapFactory);
+        //let factory_address = &env.register(None, SoroswapFactory);
+        let factory_address = env.register(SoroswapFactory {}, ());
         let pair_hash = env.deployer().upload_contract_wasm(pair::WASM);
         let factory = SoroswapFactoryClient::new(&env, &factory_address);
         factory.initialize(&alice, &pair_hash);
@@ -183,8 +186,10 @@ pub fn pair_does_not_exists_both_directions() {
     let factory_test = SoroswapFactoryTest::new();
     let factory = factory_test.factory;
     let alice = factory_test.alice.clone();
-    let token_a = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
-    let token_b = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
+    let token_a_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_a: TokenClient<'_> = TokenClient::new(&factory.env, &token_a_contract.address());
+    let token_b_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_b: TokenClient<'_> = TokenClient::new(&factory.env, &token_b_contract.address());
     assert_eq!(factory.pair_exists(&token_a.address, &token_b.address), false);
     assert_eq!(factory.pair_exists(&token_b.address, &token_a.address), false);
 }
@@ -194,8 +199,10 @@ pub fn add_pair() {
     let factory_test = SoroswapFactoryTest::new();
     let factory = factory_test.factory;
     let alice = factory_test.alice.clone();
-    let token_a = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
-    let token_b = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
+    let token_a_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_a: TokenClient<'_> = TokenClient::new(&factory.env, &token_a_contract.address());
+    let token_b_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_b: TokenClient<'_> = TokenClient::new(&factory.env, &token_b_contract.address());
     factory.create_pair(&token_a.address, &token_b.address);
     assert_eq!(factory.pair_exists(&token_a.address, &token_b.address), true);
     assert_eq!(factory.pair_exists(&token_b.address, &token_a.address), true);
@@ -283,8 +290,10 @@ pub fn pair_is_unique_and_unequivocal_same_order() {
     let factory_test = SoroswapFactoryTest::new();
     let factory = factory_test.factory;
     let alice = factory_test.alice.clone();
-    let token_a = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
-    let token_b = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
+    let token_a_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_a: TokenClient<'_> = TokenClient::new(&factory.env, &token_a_contract.address());
+    let token_b_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_b: TokenClient<'_> = TokenClient::new(&factory.env, &token_b_contract.address());
     factory.create_pair(&token_a.address, &token_b.address);
     factory.create_pair(&token_a.address, &token_b.address);
 }
@@ -295,8 +304,10 @@ pub fn pair_is_unique_and_unequivocal_inverted_order() {
     let factory_test = SoroswapFactoryTest::new();
     let factory = factory_test.factory;
     let alice = factory_test.alice.clone();
-    let token_a = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
-    let token_b = TokenClient::new(&factory.env, &factory.env.register_stellar_asset_contract(alice.clone()));
+    let token_a_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_a: TokenClient<'_> = TokenClient::new(&factory.env, &token_a_contract.address());
+    let token_b_contract = &factory.env.register_stellar_asset_contract_v2(alice.clone());
+    let token_b: TokenClient<'_> = TokenClient::new(&factory.env, &token_b_contract.address());
     factory.create_pair(&token_a.address, &token_b.address);
     factory.create_pair(&token_b.address, &token_a.address);
 }

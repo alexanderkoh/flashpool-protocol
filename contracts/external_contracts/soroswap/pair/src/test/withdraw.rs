@@ -7,7 +7,7 @@ use crate::test::pair::SoroswapPairError;
 // #[should_panic(expected = "SoroswapPair: not yet initialized")]
 fn try_withdraw_not_yet_initialized() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     let result = test.contract.try_withdraw(&test.user);
     assert_eq!(result, Err(Ok(SoroswapPairError::NotInitialized)));
 }
@@ -16,7 +16,7 @@ fn try_withdraw_not_yet_initialized() {
 // #[should_panic(expected = "SoroswapPair: liquidity was not initialized yet")]
 fn try_withdraw_not_yet_deposited() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let result = test.contract.try_withdraw(&test.user);
     assert_eq!(result, Err(Ok(SoroswapPairError::WithdrawLiquidityNotInitialized)));
@@ -26,7 +26,7 @@ fn try_withdraw_not_yet_deposited() {
 // #[should_panic(expected = "SoroswapPair: insufficient sent shares")]
 fn try_withdraw_not_shares_sent() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 50_000_000;
     let amount_1: i128 = 100_000_000;
@@ -41,7 +41,7 @@ fn try_withdraw_not_shares_sent() {
 #[test]
 fn withdraw() {
     let test = SoroswapPairTest::setup();    
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0: i128 = 3_000_000;
     let amount_1: i128 = 3_000_000;

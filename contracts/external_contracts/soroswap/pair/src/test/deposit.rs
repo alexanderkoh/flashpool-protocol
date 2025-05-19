@@ -18,7 +18,7 @@ pub fn add_liquidity(test: &SoroswapPairTest, amount_0: &i128, amount_1: &i128) 
 // #[should_panic(expected = "SoroswapPair: not yet initialized")]
 fn deposit_not_yet_initialized() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     let res = test.contract.try_deposit(&test.user);
     assert_eq!(res, Err(Ok(SoroswapPairError::NotInitialized)));
 }
@@ -27,7 +27,7 @@ fn deposit_not_yet_initialized() {
 // #[should_panic(expected = "SoroswapPair: insufficient amount of token 0 sent")]
 fn deposit_zero_tokens_sent() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let res = test.contract.try_deposit(&test.user);
     assert_eq!(res, Err(Ok(SoroswapPairError::DepositInsufficientAmountToken0)));
@@ -37,7 +37,7 @@ fn deposit_zero_tokens_sent() {
 // #[should_panic(expected = "SoroswapPair: insufficient amount of token 1 sent")]
 fn deposit_only_token_0_sent() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     let amount_0: i128 = 1_000_000;
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     test.token_0.transfer(&test.user, &test.contract.address, &amount_0);
@@ -49,7 +49,7 @@ fn deposit_only_token_0_sent() {
 // #[should_panic(expected = "SoroswapPair: insufficient first liquidity minted")]
 fn deposit_insufficient_first_liquidity() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     // If we just send 1,000 of each, the liq to be minted will be sqrt(1000*1000) - 1000 = 0, not enough
     let amount_0: i128 = 1_000;
     let amount_1: i128 = 1_000;
@@ -65,7 +65,7 @@ fn deposit_insufficient_first_liquidity() {
 #[test]
 fn deposit_sufficient_first_liquidity() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     // If we just send 1,000 of each, the liq to be minted will be sqrt(1000*1000) - 1000 = 0, not enough
     let amount_0: i128 = 1_001; //
     let amount_1: i128 = 1_001; //
@@ -79,7 +79,7 @@ fn deposit_sufficient_first_liquidity() {
 fn deposit_basic() {
     let test = SoroswapPairTest::setup();
     // TODO: Get rid of this hack?
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     
     let init_time = 12345;
     test.env.ledger().with_mut(|li| {
@@ -123,7 +123,7 @@ fn deposit_basic() {
 fn deposit_basic_2() {
     let test = SoroswapPairTest::setup();
     // TODO: Get rid of this hack?
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
     let amount_0 = 1_000_000_000_000_000_000;
     let amount_1 = 4_000_000_000_000_000_000;

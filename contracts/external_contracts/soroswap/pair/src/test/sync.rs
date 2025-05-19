@@ -5,14 +5,14 @@ use crate::test::{SoroswapPairTest};
 fn sync_not_initialized() {
     // zero tokens are being sent
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.sync();
 }
 
 #[test]
 fn sync_with_liquidity_nothing_to_sync() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
 
     let original_0: i128 = test.token_0.balance(&test.user);
@@ -42,7 +42,7 @@ fn sync_with_liquidity_nothing_to_sync() {
 #[test]
 fn sync() {
     let test = SoroswapPairTest::setup();
-    test.env.budget().reset_unlimited();
+    test.env.cost_estimate().budget().reset_unlimited();
     test.contract.initialize(&test.factory.address, &test.token_0.address, &test.token_1.address);
 
     let original_0: i128 = test.token_0.balance(&test.user);

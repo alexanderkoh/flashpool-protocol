@@ -224,7 +224,7 @@ fn test_zero_allowance() {
     let spender = Address::generate(&test.env);
     let from = Address::generate(&test.env);
 
-    let token_client = SoroswapPairTokenClient::new(&test.env, &test.env.register_contract(&test.contract.address, SoroswapPairToken {}));
+    let token_client = SoroswapPairTokenClient::new(&test.env, &test.env.register(SoroswapPairToken {}, (&test.contract.address,)));
 
     test.contract.transfer_from(&spender, &from, &spender, &0);
     assert!(token_client.get_allowance(&from, &spender).is_none());
