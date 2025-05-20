@@ -177,7 +177,7 @@ fn fresh_env<'a>(
     let user_str = god1.to_string();
     let user_std_str = soroban_string_to_std(&user_str);
     std::println!("Generated user address: {}", user_std_str);
-    let (my_token, my_token_admin) = register_custom_stellar_asset_contract(&e, &god1, "TEST");
+     let (my_token, my_token_admin) = register_custom_stellar_asset_contract(&e, &god1, "TEST");
     std::println!(
         "Created asset contract for user {} with address {:?} with name: {:?} and symbol {:?}",
         user_std_str,
@@ -186,11 +186,6 @@ fn fresh_env<'a>(
         my_token.symbol()
     );
 
-    let contract_id = e.register(FlashCampaignManager, ());
-    let contract_addr = contract_id.clone(); // This is the contract's address
-    // set_sac_admin_to_contract(&e, &god1, &my_token_admin, &contract_addr);
-
-    
     let mut users = Vec::new(&e);
     for _ in 0..10 {
         let user = Address::generate(&e);
@@ -243,21 +238,8 @@ fn fresh_env<'a>(
     let factory = SoroswapFactoryClient::new(&e, &factory_addr);
     factory.initialize(&god, &pair_wasm_hash);
 
-    let flash_usdc_pair = create_pair_ordered(&factory, &flash, &usdc, "FLASH", "USDC");
+    // Only create the USDC/EURC pair here
     let usdc_eurc_pair = create_pair_ordered(&factory, &usdc, &eurc, "USDC", "EURC");
-    
-    setup_and_log_pair_liquidity(
-        &e,
-        &god,
-        &flash,
-        "FLASH",
-        &usdc,
-        "USDC",
-        &flash_usdc_pair,
-        1_000_000 * TOKEN_UNIT,
-        200 * TOKEN_UNIT,
-    );
-
     setup_and_log_pair_liquidity(
         &e,
         &god,
@@ -270,15 +252,18 @@ fn fresh_env<'a>(
         312_500 * TOKEN_UNIT,
     );
 
-//    let mgr_id = e.register(FlashCampaignManager, ());
-  //  let mgr = FlashCampaignManagerClient::new(&e, &mgr_id);
+    // Deploy and initialize the manager contract
     let manager_address = e.register(campaign_manager::WASM, ());
     let manager = FlashCampaignManagerClient::new(&e, &manager_address);
-    
+
     let initial_flash: i128 = 100_000 * TOKEN_UNIT;
     let initial_usdc: i128 = 250 * TOKEN_UNIT;
-    std::println!("[TESTS - FRESH_ENV]\n    [INITIALIZE]\n        initializing the manager contract at address {:?} with initial flash={} and usdc={}", manager_address, initial_flash / TOKEN_UNIT, initial_usdc / TOKEN_UNIT);
-    manager.initialize(&god, &flash.address, &usdc.address, &initial_flash, &initial_usdc, &factory_addr);
+    std::println!(
+        "[TESTS - FRESH_ENV]\n    [INITIALIZE]\n        initializing the manager contract at address {:?} with initial flash={} and usdc={}",
+        manager_address, initial_flash / TOKEN_UNIT, initial_usdc / TOKEN_UNIT
+    );
+    // Call initialize and capture the returned pair address
+    let flash_usdc_pair = manager.initialize(&god, &flash.address, &usdc.address, &initial_flash, &initial_usdc, &factory_addr);
 
     (
         e,
