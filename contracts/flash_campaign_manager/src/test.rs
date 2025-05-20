@@ -44,7 +44,6 @@ Each test line in the plan below gets a comment checkbox; update as they pass/fa
 #![cfg(test)]
 #[allow(unused_imports)]
 use super::*;
-use soroban_sdk::vec;
 use soroban_sdk::xdr::{
     AccountId, AlphaNum4, Asset, AssetCode4, ContractExecutable, ContractIdPreimage,
     CreateContractArgs, HostFunction, PublicKey, ScAddress, ScVal, Uint256,
@@ -53,6 +52,7 @@ use soroban_sdk::{
     testutils::{Address as _, Ledger, Logs, MockAuth, MockAuthInvoke},
     token, Address, Env, IntoVal, String as SorobanString, TryFromVal, TryIntoVal, Val, Vec,
 };
+use crate::storage::upos_key;
 
 extern crate std;
 
@@ -177,15 +177,15 @@ fn fresh_env<'a>(
     let user_str = god1.to_string();
     let user_std_str = soroban_string_to_std(&user_str);
     std::println!("Generated user address: {}", user_std_str);
-     let (my_token, my_token_admin) = register_custom_stellar_asset_contract(&e, &god1, "TEST");
-    std::println!(
+     //let (my_token, my_token_admin) = register_custom_stellar_asset_contract(&e, &god1, "TEST");
+    /*std::println!(
         "Created asset contract for user {} with address {:?} with name: {:?} and symbol {:?}",
         user_std_str,
         my_token.address,
         my_token.name(),
         my_token.symbol()
     );
-
+*/
     let mut users = Vec::new(&e);
     for _ in 0..10 {
         let user = Address::generate(&e);
@@ -237,7 +237,7 @@ fn fresh_env<'a>(
     let factory_addr = e.register(soroswap_factory::WASM, ());
     let factory = SoroswapFactoryClient::new(&e, &factory_addr);
     factory.initialize(&god, &pair_wasm_hash);
-
+        
     // Only create the USDC/EURC pair here
     let usdc_eurc_pair = create_pair_ordered(&factory, &usdc, &eurc, "USDC", "EURC");
     setup_and_log_pair_liquidity(
@@ -264,7 +264,7 @@ fn fresh_env<'a>(
     );
     // Call initialize and capture the returned pair address
     let flash_usdc_pair = manager.initialize(&god, &flash.address, &usdc.address, &initial_flash, &initial_usdc, &factory_addr);
-
+    std::println!("[TESTS - FRESH_ENV]\n    [INITIALIZE]\n        flash_usdc_pair={:?}", flash_usdc_pair);
     (
         e,
         manager,
@@ -312,7 +312,7 @@ fn setup_and_log_pair_liquidity<'a>(
     deposit0: i128,
     deposit1: i128,
 ) {
-    let pair_client = soroswap_pair::Client::new(e, pair_addr);
+    let pair_client = SoroswapPairClient::new(e, pair_addr);
     // Order tokens and labels to match the pair contract's logic
     let (token_a, label_a, token_b, label_b, deposit_a, deposit_b) = order_tokens_and_labels(token0, token0_label, token1, token1_label, deposit0, deposit1);
 
@@ -482,7 +482,7 @@ fn generate_volume_on_pair(
     user: &Address,
 ) {
     token_a.transfer(user, pair, &(1_000 * TOKEN_UNIT));
-    let pair_client = soroswap_pair::Client::new(e, pair);
+    let pair_client = SoroswapPairClient::new(e, pair);
     let before = pair_client.get_reserves();
     pair_client.swap(&(1_000 * TOKEN_UNIT), &0, user);
     let after = pair_client.get_reserves();
@@ -506,58 +506,77 @@ fn generate_volume_on_pair(
 // The test cases:
 #[test]
 fn test_initialize_contract_and_seeding() {
-    let (e, mgr, god, _users, flash, _usdc, _eurc, _factory_addr, flash_usdc_pair, usdc_eurc_pair) =
+    let (e, mgr, god, _users, flash, usdc, eurc, _factory_addr, flash_usdc_pair, usdc_eurc_pair) =
         fresh_env("test_initialize_contract_and_seeding");
 
     let manager_address = &mgr.address;
-    let usdc_address = &_usdc.address;
-    let eurc_address = &_eurc.address;
+    let usdc_address = &usdc.address;
+    let eurc_address = &eurc.address;
     let flash_address = &flash.address;
     std::println!("[test_initialize_contract_and_seeding]\ninitialized an env:\n  Addresses:\n   manager:       {:?}\n   god address=   {:?}\n   flash address= {:?}\n   usdc address=  {:?}\n   eurc address=  {:?}\n   factory=       {:?}\n   flash_usdc=    {:?}\n   usdc_eurc=     {:?}",manager_address, god, flash_address, usdc_address, eurc_address, _factory_addr, flash_usdc_pair, usdc_eurc_pair);
 
-    assert!(flash.balance(&mgr.address) > 0);
+    // Log contract's balances
+    std::println!(
+        "[test_initialize_contract_and_seeding]\nBalances for contract:\n   flash=    {}\n   usdc=     {}\n   eurc=     {}",
+        flash.balance(&mgr.address) / TOKEN_UNIT,
+        usdc.balance(&mgr.address) / TOKEN_UNIT,
+        eurc.balance(&mgr.address) / TOKEN_UNIT
+    );
+
+    // Log god's balances
     std::println!(
         "[test_initialize_contract_and_seeding]\nBalances for god:\n   flash=    {}\n   usdc=     {}\n   eurc=     {}",
         flash.balance(&god) / TOKEN_UNIT,
-        flash.balance(&flash_usdc_pair) / TOKEN_UNIT,
-        flash.balance(&usdc_eurc_pair) / TOKEN_UNIT
+        usdc.balance(&god) / TOKEN_UNIT,
+        eurc.balance(&god) / TOKEN_UNIT
     );
-    let flash_usdc_pair_client = soroswap_pair::Client::new(&e, &flash_usdc_pair);
+
+    // Log pair balances
+    std::println!(
+        "[test_initialize_contract_and_seeding]\nBalances for pairs:\n   flash_usdc: flash={} usdc={}\n   usdc_eurc: usdc={} eurc={}",
+        flash.balance(&flash_usdc_pair) / TOKEN_UNIT,
+        usdc.balance(&flash_usdc_pair) / TOKEN_UNIT,
+        usdc.balance(&usdc_eurc_pair) / TOKEN_UNIT,
+        eurc.balance(&usdc_eurc_pair) / TOKEN_UNIT
+    );
+
+    //let flash_usdc_pair_client = soroswap_pair::Client::new(&e, &flash_usdc_pair);
+    let flash_usdc_pair_client = SoroswapPairClient::new(&e, &flash_usdc_pair);
+
     let (rf, ru) = flash_usdc_pair_client.get_reserves();
+    std::println!("        flash_usdc_pair reserves: r0={:.7} r1={:.7}", (rf / TOKEN_UNIT) as f64, (ru / TOKEN_UNIT) as f64);
     assert!(rf > 0 && ru > 0);
 
-    let usdc_eurc_pair_client = soroswap_pair::Client::new(&e, &usdc_eurc_pair);
+    let usdc_eurc_pair_client = SoroswapPairClient::new(&e, &usdc_eurc_pair);
     let (r0, r1) = usdc_eurc_pair_client.get_reserves();
-
-    std::println!(
-        "[test_initialize_contract_and_seeding] usdc_eurc_pair reserves: r0={} r1={}",
-        r0 / TOKEN_UNIT,
-        r1 / TOKEN_UNIT
-    );
+    std::println!("        usdc_eurc_pair reserves: r0={:.7} r1={:.7}", (rf / TOKEN_UNIT) as f64, (ru / TOKEN_UNIT) as f64);
+   
+   
     assert!(r0 > 0 && r1 > 0);
 
     dump(&e, "setup_and_initialize");
 }
 
 #[test]
-fn test_create_campaign_single_user() {
-    std::println!("[TEST] ---- test_create_campaign_single_user----");
-    let (e, mgr, _god, users, _flash, usdc, _eurc, _factory_addr, _flash_usdc_pair, usdc_eurc_pair) =
+fn test_create_campaign_single_user_no_bonus() {
+    std::println!("[TEST] ---- test_create_campaign_single_user_no_bonus----");
+    let (e, mgr, _god, users, _flash, usdc, eurc, _factory_addr, _flash_usdc_pair, usdc_eurc_pair) =
         fresh_env("test_create_campaign_single_user");
     let alice = users.get(0).unwrap();
     std::println!(
         "[TEST] Balances: alice usdc={}",
         usdc.balance(&alice) / TOKEN_UNIT
     );
-    let cid = mgr.create_campaign(&(500 * TOKEN_UNIT), &usdc_eurc_pair, &10, &0, &0, &alice);
+    let cid = mgr.create_campaign(&(500 * TOKEN_UNIT), &usdc_eurc_pair, &10, &(100_000*TOKEN_UNIT), &0, &alice);
     dump(&e, "create_campaign_single_user");
-    let key: Val = (PREFIX_UPOS, cid, alice.clone()).into_val(&e);
+    let key = upos_key(&e, cid, &alice);
     assert!(!e.storage().instance().has(&key));
 }
+
 /*
 #[test]
 fn test_create_and_join_campaign_two_users() {
-    let (e, mgr, _god, users, _flash, usdc, _eurc, _factory_addr, _flash_usdc_pair, usdc_eurc_pair) =
+    let (e, mgr, _god, users, _flash, usdc, eurc, _factory_addr, _flash_usdc_pair, usdc_eurc_pair) =
         fresh_env();
     let alice = users.get(0).unwrap();
     let bob = users.get(1).unwrap();

@@ -1,4 +1,6 @@
 # Flash Campaign Manager (contracts folder)
+cargo test -p flash_campaign_manager -- --nocapture --test-threads=1
+
 
 This folder contains an **experimental Soroban contract** that lets users
 crowd-fund FLASH/USDC liquidity-pair positions and share the resulting rewards.
