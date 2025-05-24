@@ -3,34 +3,39 @@
 //! Verbose build – every major step emits a plain-text log.
 
 #![no_std]
-use soroban_sdk::token::StellarAssetClient;
-use soroban_sdk::xdr::{
-    AccountId, AlphaNum4, Asset, AssetCode4, ContractExecutable, ContractIdPreimage,
-    CreateContractArgs, HostFunction, PublicKey, ScAddress, Uint256,
-};
-#[allow(unused_imports)]
+
 // -------------------------------------------------------------
 // Imports
 //
 use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, log as _log, panic_with_error, token,
-    token::Client as TokenClient, unwrap::UnwrapOptimized, Address, Env, IntoVal, String, Symbol,
-    TryIntoVal, Val,
+    contract,
+    contracterror,
+    contractimpl,
+    contracttype,
+    token::Client as TokenClient,
+    unwrap::UnwrapOptimized,
+    Address,
+    Env,
+    IntoVal,
+    // String, Symbol, TryIntoVal, BytesN, token, token::StellarAssetClient, log as _log
+    Val,
 };
 // bring the real Soroswap pair WASM (for on-chain build)
 pub mod pair {
     soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/soroswap_pair.wasm");
 }
-
 mod soroswap_factory {
     soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/soroswap_factory.wasm");
 }
 
 mod rewards;
 mod storage;
-
+mod utils;
 use storage::*;
-//extern crate std;
+use utils::*;
+
+#[cfg(all(not(target_family = "wasm")))]
+extern crate std;
 
 // -------------------------------------------------------------
 // Errors
@@ -58,14 +63,24 @@ pub enum FlashErr {
     Mag = 17,
     Maf = 18,
     Mar = 19,
+    InvalidToken = 20,
+    CampaignActiveForPair = 21,
+    NoCorePair = 22,
 }
 
 /// assert-style helper that logs **before** panicking
 macro_rules! ensure {
     ($env:expr, $cond:expr, $err:expr) => {
         if !$cond {
+            #[cfg(all(not(target_family = "wasm")))]
+            std::println!(
+                "[CAMPAIGN_MANAGER_CONTRACT]\n    [ensure!] -- failed -- code {}",
+                $err as u32
+            );
             //log!($env, "ensure! failed – code {}", $err as u32);
-            panic_with_error!($env, $err)
+            //panic_with_error!($env, $err)
+            // return an Err instead of panic!
+            return Err($err);
         }
     };
 }
@@ -79,7 +94,7 @@ const DEFAULT_TTL_BUMP: u32 = 241_920; // 14 days bump
 // Data types
 // -------------------------------------------------------------
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Campaign {
     pair: Address,
     duration: u32,
@@ -93,7 +108,7 @@ pub struct Campaign {
 }
 
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct UserPos {
     lp: i128,
     weight: i128,
@@ -122,23 +137,17 @@ fn get_addr(e:&Env,k:&'static str)->Address { e.storage().instance().get(&s(e,k)
 fn set_u32(e:&Env,k:&'static str,v:u32){ e.storage().instance().set(&s(e,k),&v) }
 fn get_u32(e:&Env,k:&'static str,d:u32)->u32{ e.storage().instance().get(&s(e,k)).unwrap_or(d) }
 */
-fn bump(e: &Env) {
-    e.storage().instance().extend_ttl(
-        get_u32(e, KEY_TTLT, DEFAULT_TTL_THRESH),
-        get_u32(e, KEY_TTLB, DEFAULT_TTL_BUMP),
-    );
-}
-/*
-fn camp_key(e:&Env,id:u32)->Val { (PREFIX_CAMP,id).into_val(e) }
-fn upos_key(e:&Env,id:u32,w:&Address)->Val { (PREFIX_UPOS,id,w).into_val(e) }
 
-fn load_camp(e:&Env,id:u32)->Campaign {
-    e.storage().instance().get::<Val,Campaign>(&camp_key(e,id)).unwrap_optimized()
+fn bump(e: &Env) {
+    #[cfg(all(not(target_family = "wasm")))]
+    std::println!("[CAMPAIGN_MANAGER_CONTRACT]\n    [bump] -- trying to bump ttl");
+    let config = get_core_config(e);
+    e.storage()
+        .instance()
+        .extend_ttl(config.ttl_thresh, config.ttl_bump);
 }
-fn save_camp(e:&Env,id:u32,c:&Campaign){
-    e.storage().instance().set::<Val,Campaign>(&camp_key(e,id),c)
-}
-*/
+
+#[allow(dead_code)]
 fn symbol_to_code_bytes(symbol: &soroban_sdk::String) -> [u8; 4] {
     let mut code_bytes = [0u8; 4];
     let len = symbol.len().min(4) as usize;
@@ -148,46 +157,6 @@ fn symbol_to_code_bytes(symbol: &soroban_sdk::String) -> [u8; 4] {
         code_bytes[..len].copy_from_slice(&tmp[..len]);
     }
     code_bytes
-}
-
-/*
-fn log_pair_creation(
-    pair_addr: &Address,
-    token0_label: &String,
-    token0_addr: &Address,
-    token1_label: &String,
-    token1_addr: &Address,
-) {
-    //std::println!("     PAIR CREATED\n          {:?}", pair_addr);
-    //std::println!("             token0: {:#?}\n             Address:    {:?}", token0_label, token0_addr);
-    //std::println!("             token1: {:#?}\n             Address:    {:?}",        token1_label,        token1_addr,        );
-}
- */
-
-fn create_pair_ordered<'a>(
-    factory: &soroswap_factory::Client<'a>,
-    token_a: &token::Client<'a>,
-    token_b: &token::Client<'a>,
-    label_a: &String,
-    label_b: &String,
-) -> Address {
-    let pairaddress: Address;
-    //std::println!("[CREATE_PAIR_ORDERED] --- CREATING PAIR FOR {:?}/{:?} ---", label_a, label_b);
-    if token_a.address < token_b.address {
-        pairaddress = factory.create_pair(&token_a.address, &token_b.address);
-        // log_pair_creation( &pairaddress,            label_a,            &token_a.address,            label_b,            &token_b.address,        );
-    } else {
-        pairaddress = factory.create_pair(&token_b.address, &token_a.address);
-        // log_pair_creation(            &pairaddress,            label_b,            &token_b.address,            label_a,            &token_a.address,        );
-    }
-    pairaddress
-}
-
-/// Transfers admin of a Stellar Asset Contract to this contract.
-pub fn claim_sac_admin(e: Env, sac_contract: Address, current_admin: Address) {
-    current_admin.require_auth();
-    let sac = StellarAssetClient::new(&e, &sac_contract);
-    sac.set_admin(&e.current_contract_address());
 }
 
 // -------------------------------------------------------------
@@ -229,7 +198,7 @@ pub trait Manager {
         initial_flash: i128,
         initial_usdc: i128,
         soroswap_factory: Address,
-    ) -> Address;
+    ) -> Result<Address, FlashErr>;
 
     fn create_campaign(
         e: Env,
@@ -239,14 +208,14 @@ pub trait Manager {
         target_lp: i128,
         bonus_flash: i128,
         creator: Address,
-    ) -> u32;
-    fn ucnt_key(e: &Env, id: u32) -> Val;
-    fn join_campaign(e: Env, id: u32, token0_amt: i128, user: Address);
-    fn compound(e: Env, id: u32);
-    fn claim(e: Env, id: u32, user: Address);
+    ) -> Result<u32, FlashErr>;
+    fn ucnt_key(e: &Env, id: u32) -> Result<Val, FlashErr>;
+    fn join_campaign(e: Env, id: u32, token0_amt: i128, user: Address) -> Result<(), FlashErr>;
+    fn compound(e: Env, id: u32) -> Result<(), FlashErr>;
+    fn claim(e: Env, id: u32, user: Address) -> Result<(), FlashErr>;
 
-    fn set_surplus_bps(e: Env, admin: Address, bps: u32);
-    fn set_ttl(e: Env, admin: Address, threshold: u32, bump: u32);
+    fn set_surplus_bps(e: Env, admin: Address, bps: u32) -> Result<(), FlashErr>;
+    fn set_ttl(e: Env, admin: Address, threshold: u32, bump: u32) -> Result<(), FlashErr>;
 }
 
 #[contract]
@@ -264,96 +233,154 @@ impl Manager for FlashCampaignManager {
         initial_flash: i128,
         initial_usdc: i128,
         soroswap_factory: Address,
-    ) -> Address {
+    ) -> Result<Address, FlashErr> {
         let flash_token = TokenClient::new(&e, &flash);
         let usdc_token = TokenClient::new(&e, &usdc);
+
+        // THIS DOESN'T NEED TO BE IN THE FINAL CONTRACT
         let flash_decimals = flash_token.decimals();
+        let _flash_scale = 10i128.pow(flash_decimals as u32);
         let usdc_decimals = usdc_token.decimals();
-        ensure!(&e, flash_decimals == 7, FlashErr::Maa);
-        ensure!(&e, usdc_decimals == 7, FlashErr::Mas);
+        let _usdc_scale = 10i128.pow(usdc_decimals as u32);
+
+        //ensure!(&e, flash_decimals == 7, FlashErr::Maa);
+        //ensure!(&e, usdc_decimals == 7, FlashErr::Mas);
         ensure!(&e, initial_flash > 0, FlashErr::Mad);
         ensure!(&e, initial_usdc > 0, FlashErr::Maf);
         // ensure!(&e, initial_flash <= 1_000_000, FlashErr::Mah);
         //ensure!(&e, initial_usdc <= 10_000, FlashErr::Mag);
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!("[CAMPAIGN_MANAGER_CONTRACT]\n    [INITIALIZE] -- initialize(admin {:?}, flash {:?}, usdc {:?}, initial_flash {:.7}, initial_usdc {:.7} )", admin, flash, usdc, initial_flash as f64 / _flash_scale as f64, initial_usdc as f64 / _usdc_scale as f64);
 
-        //std::println!("[CAMPAIGN_MANAGER_CONTRACT]\n    [INITIALIZE] -- initialize(admin {:?}, flash {:?}, usdc {:?}, initial_flash {:.7}, initial_usdc {:.7} )", admin, flash, usdc, initial_flash as f64 / flash_decimals as f64, initial_usdc as f64 / usdc_decimals as f64);
-        bump(&e);
+        //bump(&e);
+
         ensure!(
             &e,
-            !e.storage().instance().has(&s(&e, KEY_ADMIN)),
+            !e.storage().instance().has(&KEY_CORE_CONFIG),
             FlashErr::AlreadyInit
         );
 
         admin.require_auth();
 
-        // we need to make sure we are setting the storage values correctly i don't think we do right now because these are just consts...
-        set_addr(&e, KEY_ADMIN, &admin);
-        set_addr(&e, KEY_FLASH, &flash);
-        set_addr(&e, KEY_USDC, &usdc);
-        set_u32(&e, KEY_NEXT, 0);
-        set_u32(&e, KEY_SURP, DEFAULT_SURPLUS_BPS);
-        set_u32(&e, KEY_TTLT, DEFAULT_TTL_THRESH);
-        set_u32(&e, KEY_TTLB, DEFAULT_TTL_BUMP);
-
-        let flash_bal = flash_token.balance(&admin);
-        let usdc_bal = usdc_token.balance(&admin);
-        ensure!(&e, flash_bal >= initial_flash, FlashErr::Maj);
-        ensure!(&e, usdc_bal >= initial_usdc, FlashErr::Mak);
-
-        //std::println!("     BALANCES FOR {:?}\n        FLASH: {:.7}\n        USDC:  {:.7}", admin, (flash_bal / flash_decimals as i128), usdc_bal / usdc_decimals as i128);
-
-        flash_token.transfer(&admin, &e.current_contract_address(), &flash_bal);
+        let flash_bal_a = flash_token.balance(&admin);
+        let usdc_bal_a = usdc_token.balance(&admin);
+        ensure!(&e, flash_bal_a >= initial_flash, FlashErr::Maj);
+        ensure!(&e, usdc_bal_a >= initial_usdc, FlashErr::Mak);
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!(
+            "     Admin BALANCES FOR {:?}\n        FLASH: {:.7}\n        USDC:  {:.7}",
+            admin,
+            (flash_bal_a / _flash_scale) as f64,
+            (usdc_bal_a / _usdc_scale) as f64
+        );
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            let flash_bal_c = flash_token.balance(&e.current_contract_address());
+            let usdc_bal_c = usdc_token.balance(&e.current_contract_address());
+            std::println!(
+                "      1 contract BALANCES FOR {:?}\n        FLASH: {:.7}\n        USDC:  {:.7}",
+                e.current_contract_address(),
+                (flash_bal_c / _flash_scale) as f64,
+                (usdc_bal_c / _usdc_scale) as f64
+            );
+        }
+        // transfer from admin to manager contract
+        flash_token.transfer(&admin, &e.current_contract_address(), &flash_bal_a);
         usdc_token.transfer(&admin, &e.current_contract_address(), &initial_usdc);
-
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            let flash_bal_c1 = flash_token.balance(&e.current_contract_address());
+            let usdc_bal_c1 = usdc_token.balance(&e.current_contract_address());
+            std::println!(
+        "      2 contract BALANCES FOR {:?} AFTER\n        FLASH: {:.7}\n        USDC:  {:.7}",
+        e.current_contract_address(),
+        (flash_bal_c1 / _flash_scale) as f64,
+        (usdc_bal_c1 / _usdc_scale) as f64
+    );
+            let flash_bal_a2 = flash_token.balance(&admin);
+            let usdc_bal_a2 = usdc_token.balance(&admin);
+            std::println!(
+                "     2 Admin BALANCES FOR {:?} AFTER\n        FLASH: {:.7}\n        USDC:  {:.7}",
+                admin,
+                (flash_bal_a2 / _flash_scale) as f64,
+                (usdc_bal_a2 / _usdc_scale) as f64
+            );
+        }
         //log!(&e, "[INITIALIZE] pulled {} FLASH from admin", bal);
 
         // now we should setup the pair contract for the usdc/flash pair
         let pair_factory = soroswap_factory::Client::new(&e, &soroswap_factory);
-        let t0_symbol = flash_token.symbol();
-        let t1_symbol = usdc_token.symbol();
-        let core_pair_address = create_pair_ordered(
-            &pair_factory,
-            &flash_token,
-            &usdc_token,
-            &t0_symbol,
-            &t1_symbol,
-        );
-        //std::println!("     PAIR CREATED\n          {:?}", core_pair_address);
+
+        let core_pair_address = c_p(&e, &pair_factory, &flash, &usdc);
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!("     PAIR CREATED\n          {:?}", core_pair_address);
+
         // Store the core pair address
-        set_addr(&e, KEY_CORE_PAIR, &core_pair_address);
-        // Approve the pair to spend tokens
-        flash_token.approve(
-            &e.current_contract_address(),
+        //set_addr(&e, KEY_CORE_PAIR, &core_pair_address);
+
+        let lp = d_t_p(
+            &e,
             &core_pair_address,
-            &initial_flash,
-            &0,
-        );
-        usdc_token.approve(
-            &e.current_contract_address(),
-            &core_pair_address,
-            &initial_usdc,
-            &0,
+            &flash,
+            &usdc,
+            initial_flash,
+            initial_usdc,
         );
 
-        // Transfer tokens to the pair
-        flash_token.transfer(
-            &e.current_contract_address(),
-            &core_pair_address,
-            &initial_flash,
-        );
-        usdc_token.transfer(
-            &e.current_contract_address(),
-            &core_pair_address,
-            &initial_usdc,
-        );
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            use crate::pair::Client as PC;
 
-        // Deposit to mint LP tokens and seed the pool
-        let pair = pair::Client::new(&e, &core_pair_address);
-        let lp_minted = pair.deposit(&e.current_contract_address());
-        ensure!(&e, lp_minted > 0, FlashErr::Mar);
+            let flash_bal_c3 = flash_token.balance(&e.current_contract_address());
+            let usdc_bal_c3 = usdc_token.balance(&e.current_contract_address());
+            std::println!(
+            "     3 contract BALANCES FOR {:?}\n        FLASH: {:.7}\n        USDC:  {:.7} AFTER lp deposit",
+            e.current_contract_address(),
+            (flash_bal_c3 / _flash_scale) as f64 ,
+            (usdc_bal_c3 / _usdc_scale) as f64
+        );
+            let pc = PC::new(&e, &core_pair_address);
+            let lp_balance = pc.balance(&e.current_contract_address());
+            std::println!(
+                "     3 contract BALANCES FOR {:?}\n        LP: {:.7}",
+                e.current_contract_address(),
+                (lp_balance / _flash_scale) as f64
+            );
+        }
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            let flash_bal_core = flash_token.balance(&core_pair_address);
+            let usdc_bal_core = usdc_token.balance(&core_pair_address);
+            std::println!(
+                "     3 pair BALANCES FOR {:?}\n        FLASH: {:.7}\n        USDC:  {:.7}",
+                e.current_contract_address(),
+                (flash_bal_core / _flash_scale) as f64,
+                (usdc_bal_core / _usdc_scale) as f64
+            );
+        }
+        // do we need to store the lp of flash amount i'm not sure yet
+        ensure!(&e, lp > 0, FlashErr::Mar);
 
-        core_pair_address
-        // store the core pair address in the contract storage as we will need it when creating campaigns.
+        // Store all config in a single struct
+        let config = CoreConfig {
+            admin: admin.clone(),
+            flash: flash.clone(),
+            usdc: usdc.clone(),
+            core_pair: Some(core_pair_address.clone()),
+            next: 0,
+            surplus_bps: DEFAULT_SURPLUS_BPS,
+            ttl_thresh: DEFAULT_TTL_THRESH,
+            ttl_bump: DEFAULT_TTL_BUMP,
+        };
+
+        set_core_config(&e, &config);
+        bump(&e);
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            let stored_config = get_core_config(&e);
+            std::println!("[initialize] CoreConfig stored: {:?}", stored_config);
+        }
+        Ok(core_pair_address)
     }
 
     // -------------------------------------- create_campaign -------
@@ -365,186 +392,207 @@ impl Manager for FlashCampaignManager {
         target_lp: i128,
         bonus_flash: i128,
         creator: Address,
-    ) -> u32 {
-        //std::println!("── THIS IS THE CREATE CAMPAIGN LOGGING IN STD-──");
-
+    ) -> Result<u32, FlashErr> {
+        
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!("── [FCM - CREATE_CAMPAIGN] ──");
+        let cca = &e.current_contract_address();
+        if let Some(info) = get_active_campaign_for_pair(&e, &target_pool) {
+            ensure!(
+                &e,
+                info.end_ledger <= e.ledger().sequence(),
+                FlashErr::CampaignActiveForPair
+            );
+        }
         bump(&e);
         creator.require_auth();
-        let core_pair_address = get_addr(&e, KEY_CORE_PAIR);
+        // Load config struct
+        let mut config = get_core_config(&e);
+
+        let core_pair_address = config
+            .core_pair
+            .clone()
+           .ok_or(FlashErr::NoCorePair)?;
         let core_pair = pair::Client::new(&e, &core_pair_address);
 
-        let flash_address = get_addr(&e, KEY_FLASH);
-        let usdc_address = get_addr(&e, KEY_USDC);
-        let surplus_bps = get_u32(&e, KEY_SURP, DEFAULT_SURPLUS_BPS);
+        let flash_address = config.flash.clone();
+        let usdc_address = config.usdc.clone();
+        let surplus_bps = config.surplus_bps;
         ensure!(&e, surplus_bps < MAX_BPS, FlashErr::BpsOutOfRange);
+        let balance_flash_start = TokenClient::new(&e, &flash_address).balance(&cca);
+        let pair_balance_start = TokenClient::new(&e, &flash_address).balance(&core_pair_address);
         let usd_cli = TokenClient::new(&e, &usdc_address);
-        //std::println!("Fee incoming: {fee_usdc} USDC from {creator:?}");
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!(
+            "    {creator:?} creating campaign with {:.7} USDC",
+            (fee_usdc / 10i128.pow(7)) as f64
+        );
 
         // Take all USDC from creator
+        usd_cli.transfer(&creator, &cca, &fee_usdc);
 
-        usd_cli.transfer(&creator, &e.current_contract_address(), &fee_usdc);
+        let (r0, r1) = core_pair.get_reserves();
+        let (t0, t1) = o_t_c(&e, &flash_address, &usdc_address);
+        let t0_addr = t0.address.clone();
+        let t1_addr = t1.address.clone();
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!(
+            "    Raw pair reserves: {:?}={:.7}, {:?}={:.7}",
+            t0_addr, (r0 as f64) * 1e-7,
+            t1_addr, (r1 as f64) * 1e-7
+        );
+        // Map reserves so reserve_usdc_before / reserve_flash_before are correct
+        let (reserve_usdc_before, reserve_flash_before) =
+            if t0_addr == usdc_address && t1_addr == flash_address {
+                (r0, r1)
+            } else if t0_addr == flash_address && t1_addr == usdc_address {
+                (r1, r0)
+            } else {
+                return Err(FlashErr::InvalidToken);
+            };
+#[cfg(all(not(target_family = "wasm")))]
+        std::println!(
+            "    Pair reserves before (USDC→FLASH):\n        USDC={:.7}\n        FLASH={:.7}",
+            (reserve_usdc_before as f64) * 1e-7,
+            (reserve_flash_before as f64) * 1e-7
+        );
 
-        // we need to get the flash/usdc pair address from the contract storage.
-        // Get pool reserves before
-
-        let (flash_reserves_before, usdc_reserves_before) = core_pair.get_reserves();
-        //std::println!("Pair reserves before: FLASH={flash_reserves_before}, USDC={usdc_reserves_before}");
-
+        
         // Fee split
         let s_min = int_sqrt(
-            (usdc_reserves_before as u128) * (usdc_reserves_before as u128 + fee_usdc as u128),
+            (reserve_usdc_before as u128) * (reserve_usdc_before as u128 + fee_usdc as u128),
         ) as i128
-            - usdc_reserves_before;
-        let smin_log = s_min as f32 * 1e-7;
-        let usdc_fee_log = fee_usdc as f32 * 1e-7;
-        //std::println!("s_min={smin_log}, surplus_bps={surplus_bps}, fee_usdc={usdc_fee_log}");
+            - reserve_usdc_before;
+
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            let smin_log = s_min as f64 * 1e-7;
+            let usdc_fee_log = fee_usdc as f64 * 1e-7;
+            std::println!(
+                "    s_min={smin_log}, surplus_bps={surplus_bps}, fee_usdc={usdc_fee_log}"
+            );
+        }
         let swap_amount = (s_min
             + (fee_usdc as i128 * surplus_bps as i128) as i128 / MAX_BPS as i128)
             .min(fee_usdc);
-        let add_liq_amount = fee_usdc - swap_amount;
+        let usdc_liq = fee_usdc - swap_amount;
+        #[cfg(not(target_family = "wasm"))] {
+            let total_amt = swap_amount + usdc_liq;
+            std::println!(
+                "    Fee Split Calculation:\n        fee_usdc={:.7}\n        TotalAmount={:.7}\n        s_min={:.7}\n        surplus_bps={}\n        swap_amount={:.7} USDC\n        usdc_liq={:.7} USDC",
+                (fee_usdc as f64)   * 1e-7,
+                (total_amt as f64)  * 1e-7,
+                (s_min as f64)      * 1e-7,
+                surplus_bps,
+                (swap_amount as f64)* 1e-7,
+                (usdc_liq as f64)   * 1e-7
+            );
+        }
+                
+        let is_t0_usdc = t0_addr == usdc_address;
+        // swap: send USDC_in then instruct pair.swap
+        usd_cli.transfer(&cca, &core_pair_address, &swap_amount);
+        
+         let flash_out = c_s_o1(swap_amount, reserve_usdc_before, reserve_flash_before);
 
-        let swap_amount_pretty = swap_amount as f32 * 1e-7;
-        let add_liq_amount_pretty = add_liq_amount as f32 * 1e-7;
-        let total_amount = swap_amount + add_liq_amount;
-        let total_amount_pretty = total_amount as f32 * 1e-7;
-        //std::println!("Total amount: {total_amount} USDC  ||| Total amount (pretty): {total_amount_pretty} USDC");
-        //std::println!("Fee split: {surplus_bps} bps, swap_amount={swap_amount_pretty} USDC, add_liq_amount={add_liq_amount_pretty} USDC");
-        //std::println!("swap_amount={swap_amount_pretty}, add_liq_amount={add_liq_amount_pretty}");
-        //std::println!("swap_amount={swap_amount}, add_liq_amount={add_liq_amount}");
-        //std::println!("Fee split: swap {swap_amount} USDC, add_liq {add_liq_amount} USDC (s_min={s_min})");
+        //let flash_out = c_s_o(swap_amount, usdc_reserves_before, flash_reserves_before);
 
-        // Swap: USDC for FLASH
-        usd_cli.transfer(
-            &e.current_contract_address(),
-            &core_pair_address,
-            &swap_amount,
-        );
-        let token_0 = core_pair.token_0();
-        let token_1 = core_pair.token_1();
+        ensure!(&e, flash_out > 0 && flash_out < reserve_flash_before, FlashErr::Math);
 
-        // Determine which is USDC and which is FLASH in the pair
-        // store the usdc address in the storage key and fetch it from there to prevent a spoofer
-        let (reserve_in, reserve_out, is_token0_usdc) = if token_0 == usdc_address {
-            (usdc_reserves_before, flash_reserves_before, true)
-        } else {
-            (flash_reserves_before, usdc_reserves_before, false)
-        };
-
-        // AMM swap math with 0.3% fee (997/1000)
-        let swap_amount_with_fee = swap_amount.checked_mul(997).unwrap();
-        let numerator = swap_amount_with_fee.checked_mul(reserve_out).unwrap();
-        let denominator = reserve_in
-            .checked_mul(1000)
-            .unwrap()
-            .checked_add(swap_amount_with_fee)
-            .unwrap();
-        let flash_out = numerator.checked_div(denominator).unwrap();
-
-        //  let flash_out = flash_reserves_before.checked_mul(swap_amount).unwrap().checked_div(usdc_reserves_before + swap_amount).unwrap();
-        ensure!(&e, flash_out > 0 && flash_out < reserve_out, FlashErr::Math);
-
-        // this should work but lets check against the pair to be sure.
-        //let (swap_out_0, swap_out_1) = if flash_address < usdc_address { (flash_out, 0) } else { (0, flash_out) };
-        //std::println!("Swapping swap_amount={swap_amount} for flash_out={flash_out}, out0={swap_out_0}, out1={swap_out_1}");
-
-        let (swap_out_0, swap_out_1) = if is_token0_usdc {
+        //todo: make this more efficient, see utils::line5
+        let (out_0, out_1) = if is_t0_usdc {
             (0, flash_out) // token0 = USDC, token1 = FLASH
         } else {
             (flash_out, 0) // token0 = FLASH, token1 = USDC
         };
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!("    Swapping\n        swap_amount={:.7} USDC\n        flash_out={:.7}\n        out0={out_0}\n        out1={out_1}", (swap_amount as f64 * 1e-7) as f64, (flash_out as f64 * 1e-7) as f64);
 
-        core_pair.swap(&swap_out_0, &swap_out_1, &e.current_contract_address());
+        core_pair.swap(&out_0, &out_1, &e.current_contract_address());
 
         // After swap
-        let usdc_reserves_post_swap = usdc_reserves_before + swap_amount;
-        let flash_reserves_post_swap = flash_reserves_before - flash_out;
-        //std::println!("Post-swap reserves: FLASH={flash_reserves_post_swap}, USDC={usdc_reserves_post_swap}");
+        let usdc_reserves_post_swap = reserve_usdc_before + swap_amount;
+        let flash_reserves_post_swap = reserve_flash_before - flash_out;
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+        let (pr1, pr0) = core_pair.get_reserves();
+        std::println!(
+            "Post-swap reserves: \n   FLASH={:.7}\n    USDC={:.7}\n   pr0={:.7}\n   pr1={:.7}", flash_reserves_post_swap as f64 * 1e-7, usdc_reserves_post_swap as f64 * 1e-7, pr0 as f64 * 1e-7, pr1 as f64 * 1e-7
+        );
 
+        }
+       
         // Flash needed for add_liq
         ensure!(&e, usdc_reserves_post_swap > 0, FlashErr::Math);
 
-        let flash_needed = add_liq_amount
+        let flash_needed = usdc_liq
             .checked_mul(flash_reserves_post_swap)
             .unwrap()
             .checked_div(usdc_reserves_post_swap)
             .unwrap();
 
-        //let flash_needed_pretty = flash_needed as f32 * 1e-7;
-        //let add_liq_amount_pretty = add_liq_amount as f32 * 1e-7;
-        //std::println!("Calculated flash_needed={flash_needed_pretty} for add_liq_amount={add_liq_amount_pretty} USDC (flash_reserves_post_swap={flash_reserves_post_swap}, usdc_reserves_post_swap={usdc_reserves_post_swap})");
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            let flash_needed_pretty = flash_needed as f64 * 1e-7;
 
-        // Figure out which token is token_0, which is token_1
-        // change this for deployment so that it doesn't need to do a fetch we can just check that token0>token1
-        let token_0 = core_pair.token_0();
-        let token_1 = core_pair.token_1();
+            let usdc_liq_amount_pretty = usdc_liq as f64 * 1e-7;
+            std::println!("Calculated flash_needed={flash_needed_pretty} for usdc_liq={usdc_liq_amount_pretty} USDC (flash_reserves_post_swap={flash_reserves_post_swap}, usdc_reserves_post_swap={usdc_reserves_post_swap})");
 
-        // Map the amounts to the right tokens:
-        // we need to determine their order first here!
-        let (amount_0, amount_1) = match (&token_0 == &flash_address, &token_1 == &usdc_address) {
-            (true, true) => (flash_needed, add_liq_amount), // token_0 = FLASH, token_1 = USDC
-            (false, true) => (add_liq_amount, flash_needed), // token_0 = USDC,  token_1 = FLASH
-            (true, false) => (flash_needed, add_liq_amount), // token_0 = FLASH, token_1 = USDC
-            (false, false) => (add_liq_amount, flash_needed), // token_0 = USDC,  token_1 = FLASH
-        };
+            let (a0, a1) = if is_t0_usdc {
+                (flash_needed, usdc_liq)
+            } else {
+                (usdc_liq, flash_needed)
+            };
 
-        // Transfer correct amounts to pool
-        if amount_0 > 0 {
-            TokenClient::new(&e, &token_0).transfer(
-                &e.current_contract_address(),
-                &core_pair_address,
-                &amount_0,
+            std::println!(
+                "Transferred: token_0={:?} amount_0={:.7}, token_1={:?} amount_1={:.7}",
+                t0_addr,
+                (a0 as f64 * 1e-7) as f64,
+                t1_addr,
+                (a1 as f64 * 1e-7) as f64
+            );
+
+            // Log contract's pool-related token balances before deposit
+            let t0_balance = t0.balance(&e.current_contract_address());
+            let t1_balance = t1.balance(&e.current_contract_address());
+            std::println!(
+                "Contract balances before xfer: \n    token_0={:?}={:.7}\n    token_1={:?}={:.7}",
+                t0_addr,
+                (t0_balance as f64 * 1e-7) as f64,
+                t1_addr,
+                (t1_balance as f64 * 1e-7) as f64
             );
         }
-        if amount_1 > 0 {
-            TokenClient::new(&e, &token_1).transfer(
-                &e.current_contract_address(),
-                &core_pair_address,
-                &amount_1,
-            );
-        }
-        //std::println!("Transferred: token_0={token_0:?} amount_0={amount_0}, token_1={token_1:?} amount_1={amount_1}");
 
-        // Log contract's pool-related token balances before deposit
-        let t0_balance = TokenClient::new(&e, &token_0).balance(&e.current_contract_address());
-        let t1_balance = TokenClient::new(&e, &token_1).balance(&e.current_contract_address());
-        //std::println!("Contract balances before approve: token_0={:?}={:?}, token_1={:?}={:?}", token_0, t0_balance, token_1, t1_balance);
-
-        // Approve for deposit
-        TokenClient::new(&e, &token_0).approve(
-            &e.current_contract_address(),
+        let lpm = d_t_p(
+            &e,
             &core_pair_address,
-            &t0_balance,
-            &0,
+            &flash_address,
+            &usdc_address,
+            flash_needed,
+            usdc_liq,
         );
-        TokenClient::new(&e, &token_1).approve(
-            &e.current_contract_address(),
-            &core_pair_address,
-            &t1_balance,
-            &0,
-        );
-        // we need to do the transfer here before we call deposit! we only approve right now.
-
-        // Log args for deposit
-        //std::println!("Calling deposit: contract={:?}, to={:?}", pool_address, e.current_contract_address());
-
-        // Deposit
-        let flash_lp_minted = core_pair.deposit(&e.current_contract_address());
-        ensure!(&e, flash_lp_minted > 0, FlashErr::Mal);
-
-        //std::println!("Deposit complete. lp_minted={lp_minted}");
+        ensure!(&e, lpm > 0, FlashErr::Math);
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!("Deposit complete. flash/usdc lp minted={:.7}", lpm as f64 * 1e-7);
 
         // 7. reward pool calc
         let actual_usdc = TokenClient::new(&e, &usdc_address).balance(&core_pair_address)
             - usdc_reserves_post_swap;
         let actual_flash = TokenClient::new(&e, &flash_address).balance(&core_pair_address)
             - flash_reserves_post_swap;
-        //std::println!("Actual deposit amounts: actual_usdc={actual_usdc}, actual_flash={actual_flash}");
-
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!(
+            "Actual deposit amounts:\n    actual_flsh={:.7}\n    actual_usdc={:.7}",
+            (actual_flash as f64 * 1e-7) as f64,
+            (actual_usdc as f64 * 1e-7) as f64
+        );
+        // compare and verify reserves and balances and math is correct below.
         let ru1 = usdc_reserves_post_swap + actual_usdc;
         let rf1 = flash_reserves_post_swap + actual_flash;
         let root = int_sqrt(
-            (ru1 as u128 * rf1 as u128 * flash_reserves_before as u128)
-                / (usdc_reserves_before as u128),
+            (ru1 as u128 * rf1 as u128 * reserve_flash_before as u128)
+                / (reserve_usdc_before as u128),
         );
         let x_max = if root > rf1 as u128 {
             (root - rf1 as u128) as i128
@@ -554,12 +602,23 @@ impl Manager for FlashCampaignManager {
 
         let surplus = flash_out + actual_flash - flash_needed;
         let reward_flash = surplus.min(x_max);
-
-        //std::println!("Reward pool calculation: ru1={ru1}, rf1={rf1}, root={root}, x_max={x_max}, surplus={surplus}, reward_flash={reward_flash}");
-
+        #[cfg(all(not(target_family = "wasm")))]{
+        std::println!("Reward pool calculation: ru1={ru1}, rf1={rf1}, root={root}, x_max={x_max}, surplus={surplus}, reward_flash={reward_flash}");
+        std::println!(
+            "Reward pool calculation:\n    ru1={:.7}\n    rf1={:.7}\n    root={:.7}\n    x_max={:.7}\n    surplus={:.7}\n    reward_flash={:.7}",
+            (ru1 as f64 * 1e-7) as f64,
+            (rf1 as f64 * 1e-7) as f64,
+            (root as f64 * 1e-7) as f64,
+            (x_max as f64 * 1e-7) as f64,
+            (surplus as f64 * 1e-7) as f64,
+            (reward_flash as f64 * 1e-7) as f64
+        );
+        }
         //total lp is the total lp that was minted by users joining the pool, at this point it is zero.  same with stake lp... it should get updated later when users join the pool... however it can't seem to find it.  maybe we need current lp also, finally i am not sure what weight is supposed to be right now. i believe it's to do with the weight of everyone adding liquidity we'll have to figure that out later too
-        let id = get_u32(&e, KEY_NEXT, 0) + 1;
-        set_u32(&e, KEY_NEXT, id);
+        let id = config.next + 1;
+        config.next = id;
+        set_core_config(&e, &config);
+
         save_camp(
             &e,
             id,
@@ -575,17 +634,36 @@ impl Manager for FlashCampaignManager {
                 stake_lp: 0,
             },
         );
-        //std::println!("Campaign created: id={id}, pair={pool_address:?}, reward_flash={reward_flash}, total_lp={lp_minted}");
+        let info = ActiveCampaignInfo {
+            campaign_id: id,
+            end_ledger: e.ledger().sequence() + unlock,
+        };
+        set_active_campaign_for_pair(&e, &target_pool, &info);
 
-        id
+        #[cfg(all(not(target_family = "wasm")))]
+        {
+            std::println!("Campaign created:\n    id={id}\n    target_lp={target_lp}\n   pair={target_pool:?}\n    reward_flash={reward_flash}\n    bonus_flash={bonus_flash}");
+            let camp = load_camp(&e, id);
+            std::println!(
+        "[create_campaign] Campaign from storage:\n{id}\n    pair={:?}\n    duration={}\n    end_ledger={}\n    target_lp={}\n    total_lp={:.7} \n    total_weight={}\n    reward_flash={:.7}\n    bonus_flash={:.7}\n    stake_lp={:.7}",
+        camp.pair, camp.duration, camp.end_ledger, camp.target_lp, camp.total_lp, camp.total_weight as f64, camp.reward_flash as f64 * 1e-7, camp.bonus_flash as f64*1e-7, camp.stake_lp as f64 * 1e-7
+    );
+    let contract_bal = TokenClient::new(&e, &flash_address).balance(&e.current_contract_address());
+    let pair_bal = TokenClient::new(&e, &flash_address).balance(&core_pair_address);
+    let contractcirculatingbalance = (balance_flash_start - contract_bal) as f64 * 1e-7;
+    let pairbalanceafter = (pair_balance_start - pair_bal) as f64 * 1e-7;
+            std::println!(
+                "[create_campaign] CoreConfig stored:,\n    balance_flash_start{:7}\n    contract_bal: {:.7}\n    pair_balance_start: {:.7}\n    pair_bal: {:.7}\n    pair after: {:.7}\n    cont after {:.7}", balance_flash_start, contract_bal, pair_balance_start, pair_bal, pairbalanceafter, contractcirculatingbalance);
+        }
+        Ok(id)
     }
 
-    fn ucnt_key(e: &Env, id: u32) -> Val {
-        (PREFIX_UCNT, id).into_val(e)
+    fn ucnt_key(e: &Env, id: u32) -> Result<Val, FlashErr> {
+        Ok((PREFIX_UCNT, id).into_val(e))
     }
 
     // ------------------------------------------- join_campaign ---
-    fn join_campaign(e: Env, id: u32, token0_amt: i128, user: Address) {
+    fn join_campaign(e: Env, id: u32, token0_amt: i128, user: Address) -> Result<(), FlashErr> {
         bump(&e);
         user.require_auth();
         ensure!(&e, token0_amt > 0, FlashErr::Maq);
@@ -664,12 +742,12 @@ impl Manager for FlashCampaignManager {
         };
 
         e.storage().instance().set(&key, &up);
-
+        Ok(())
         //log!(&e, "[JOIN CAMPAIGN] join(id {}) user {:?} lp {} weight {}", id, user, lp, w);
     }
 
     // ------------------------------------------------------ claim --
-    fn claim(e: Env, id: u32, user: Address) {
+    fn claim(e: Env, id: u32, user: Address) -> Result<(), FlashErr> {
         bump(&e);
         user.require_auth();
 
@@ -691,22 +769,18 @@ impl Manager for FlashCampaignManager {
             0
         };
         let total = base + bonus;
-
-        TokenClient::new(&e, &get_addr(&e, KEY_FLASH)).transfer(
-            &e.current_contract_address(),
-            &user,
-            &total,
-        );
+        let config = get_core_config(&e);
+        TokenClient::new(&e, &config.flash).transfer(&e.current_contract_address(), &user, &total);
 
         TokenClient::new(&e, &c.pair).transfer(&e.current_contract_address(), &user, &up.lp);
 
         e.storage().instance().remove(&key);
-
+        Ok(())
         //log!(&e, "[CLAIM] id {:?} user {:?} flash {:?} lp {:?}", id, user, total, up.lp);
     }
 
     // -------------------------------------------------- compound ---
-    fn compound(e: Env, id: u32) {
+    fn compound(e: Env, id: u32) -> Result<(), FlashErr> {
         bump(&e);
         let mut c = load_camp(&e, id);
         let pcli = pair::Client::new(&e, &c.pair);
@@ -733,8 +807,9 @@ impl Manager for FlashCampaignManager {
         if fee_lp > 0 {
             TokenClient::new(&e, &c.pair).transfer(&e.current_contract_address(), &c.pair, &fee_lp);
             let (f0, f1) = pcli.withdraw(&e.current_contract_address());
-            let flash = get_addr(&e, KEY_FLASH);
-            let usdc = get_addr(&e, KEY_USDC);
+            let config = get_core_config(&e);
+            let flash = config.flash.clone();
+            let usdc = config.usdc.clone();
             if t0 == flash {
                 gain += f0
             } else if t0 == usdc {
@@ -750,28 +825,41 @@ impl Manager for FlashCampaignManager {
         }
         c.stake_lp = lp_new;
         save_camp(&e, id, &c);
-
+        Ok(())
         //log!(&e, "[COMPOUND] compound(id {}) fee_lp {} gain {}", id, fee_lp, gain);
     }
 
     // ------------------------------------------- admin helpers ----
-    fn set_surplus_bps(e: Env, admin: Address, bps: u32) {
+    fn set_surplus_bps(e: Env, admin: Address, bps: u32) -> Result<(), FlashErr> {
         admin.require_auth();
-        ensure!(&e, admin == get_addr(&e, KEY_ADMIN), FlashErr::NotAdmin);
+        let mut config = get_core_config(&e);
+        ensure!(&e, admin == config.admin, FlashErr::NotAdmin);
         ensure!(&e, bps < MAX_BPS, FlashErr::BpsOutOfRange);
-        set_u32(&e, KEY_SURP, bps);
+        config.surplus_bps = bps;
+        set_core_config(&e, &config);
+        Ok(())
         //log!(&e, "[ADMIN] surplus_bps set to {}", bps);
     }
 
-    fn set_ttl(e: Env, admin: Address, threshold: u32, bump_: u32) {
+    fn set_ttl(e: Env, admin: Address, threshold: u32, bump_: u32) -> Result<(), FlashErr> {
         admin.require_auth();
-        ensure!(&e, admin == get_addr(&e, KEY_ADMIN), FlashErr::NotAdmin);
-        set_u32(&e, KEY_TTLT, threshold);
-        set_u32(&e, KEY_TTLB, bump_);
+        let mut config = get_core_config(&e);
+        ensure!(&e, admin == config.admin, FlashErr::NotAdmin);
+        config.ttl_thresh = threshold;
+        config.ttl_bump = bump_;
+        set_core_config(&e, &config);
+        Ok(())
         //log!(&e, "[ADMIN] ttl threshold {} bump {}", threshold, bump_);
     }
 }
 
 // -------------------------------------------------------------
 #[cfg(test)]
-mod test;
+pub mod test;
+#[cfg(test)]
+pub mod tests {
+    pub mod log;
+    pub mod pair;
+    pub mod token;
+    pub mod utils;
+}
