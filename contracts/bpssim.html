@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FLASH Tokenomics Sandbox</title>
+<style>
+ body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:2rem;background:#0f0f0f;color:#eee}
+ label{display:block;margin:.35rem 0 .2rem;font-size:.9rem}
+ input[type=number]{width:100%;padding:.4rem;border-radius:4px;border:1px solid #555;background:#1c1c1e;color:#eee}
+ input[type=checkbox]{margin-right:.45rem}
+ button{margin-top:1rem;padding:.6rem 1.3rem;border:none;border-radius:4px;background:#4f46e5;color:#fff;font-weight:600;cursor:pointer}
+ button:hover{background:#6366f1}
+ #output{margin-top:2rem;overflow-x:auto;max-height:70vh;border:1px solid #333}
+ table{border-collapse:collapse;width:100%}
+ th,td{padding:.32rem .55rem;text-align:right;font-variant-numeric:tabular-nums}
+ tr:nth-child(even){background:#1b1b1b}
+ tr:nth-child(odd){background:#161616}
+ th{background:#27272a;position:sticky;top:0;z-index:2}
+ thead th:first-child,tbody td:first-child{position:sticky;left:0;background:#27272a;text-align:center}
+ tbody td:first-child{background:#202022}
+ td.warn{color:#facc15;font-weight:600;text-align:left}
+</style>
+</head>
+<body>
+<h2>FLASH Tokenomics Sandbox</h2>
+<form id="params" onsubmit="event.preventDefault(); run();">
+<div style="max-width:1280px;display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:1rem;">
+  <div><label>Total supply (FLASH)</label><input id="totalSupply" type="number" value="10000000" step="100000"></div>
+  <div><label>Initial LP FLASH</label><input id="initLpFlash" type="number" value="100000" step="10000"></div>
+  <div><label>Initial LP USDC</label><input id="initLpUsdc" type="number" value="250" step="50"></div>
+
+  <div><label>Outer min deposit (USDC)</label><input id="minDep" type="number" value="20" step="10"></div>
+  <div><label>Outer max deposit (USDC)</label><input id="maxDep" type="number" value="10000" step="100"></div>
+  <div><label>99% between — min</label><input id="midMin" type="number" value="100" step="10"></div>
+  <div><label>99% between — max</label><input id="midMax" type="number" value="1000" step="10"></div>
+
+  <div style="align-self:end"><input id="autoSwap" type="checkbox" checked> <label for="autoSwap">Use analytic ideal swap</label></div>
+  <div><label>Manual BPS (if unchecked)</label><input id="manualBps" type="number" value="4600" step="50"></div>
+
+  <div><label>Treasury reward % of liqFlash</label><input id="rewardPct" type="number" value="10" step="5"></div>
+  <div><label>Sell-back % of rewards</label><input id="sellPct" type="number" value="0" step="5"></div>
+  <div><label>Decay exponent κ (0-3)</label><input id="decayExp" type="number" value="1" step="0.2"></div>
+  <div><label>Treasury fade exponent β (1 linear)</label><input id="fadeExp" type="number" value="1" step="0.2"></div>
+
+  <div><label>Campaigns</label><input id="campaigns" type="number" value="500" step="1"></div>
+  <div><label>Display every N rows</label><input id="displayStep" type="number" value="5" step="1"></div>
+</div>
+<button>Run simulation</button>
+</form>
+<div id="output"></div>
+
+<script>
+const UNIT=1e7;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const isqrt=n=>Math.floor(Math.sqrt(n));
+const sMin=(U,fee)=>isqrt(U*(U+fee))-U;
+const swapOut=(F,U,S)=>F*S/(U+S);
+const liqF=(liqU,F2,U2)=>liqU*F2/U2;
+const idealSwap=(fee,U)=>sMin(U,fee);
+const fmt=(x,d=2)=>Number(x).toFixed(d);
+function biasedDeposit(i,total,oMin,oMax,mMin,mMax){
+  const base=Math.random()<0.99? rnd(mMin,mMax): rnd(oMin,oMax);
+  const t=(i-1)/(total-1);
+  const scale=1+Math.pow(t,2.5); // very gentle early, steeper late
+  return Math.min(base*scale,oMax);
+}
+function run(){
+  const v=id=>parseFloat(document.getElementById(id).value);
+  const P={total:v('totalSupply'),initF:v('initLpFlash'),initU:v('initLpUsdc'),oMin:v('minDep'),oMax:v('maxDep'),mMin:v('midMin'),mMax:v('midMax'),auto:document.getElementById('autoSwap').checked,manBps:v('manualBps'),rewardPct:v('rewardPct')/100,sellPct:v('sellPct')/100,decayExp:v('decayExp'),fadeExp:v('fadeExp'),campaigns:v('campaigns'),disp:v('displayStep')};
+  const MAX=P.total*UNIT;
+  let lpF=P.initF*UNIT,lpU=P.initU*UNIT;
+  let rewardPool=0,manager=(P.total-P.initF)*UNIT;
+  const out=document.getElementById('output');out.innerHTML='';
+  const tbl=document.createElement('table');
+  tbl.innerHTML=`<thead><tr><th>#</th><th>depU</th><th>swapU</th><th>liqU</th><th>swapF</th><th>liqF</th><th>mgrEmit</th><th>swapEmit</th><th>manager</th><th>lpF</th><th>lpU</th><th>TVL</th><th>price</th><th>circ</th></tr></thead><tbody></tbody>`;
+  const body=tbl.querySelector('tbody');
+
+  for(let i=1;i<=P.campaigns;i++){
+    const depU=biasedDeposit(i,P.campaigns,P.oMin,P.oMax,P.mMin,P.mMax)*UNIT;
+    const swapU=P.auto?idealSwap(depU,lpU):Math.min(depU,sMin(lpU,depU)+depU*P.manBps/10000);
+    const liqU=depU-swapU;
+    const fOut=swapOut(lpF,lpU,swapU);
+    const lpFafter=lpF-fOut,lpUafter=lpU+swapU;
+    let addF=liqF(liqU,lpFafter,lpUafter);
+
+    const circPrev=lpF+rewardPool;
+    const ratio=circPrev/MAX;
+    if(ratio>0.5){const prog=(ratio-0.5)/0.5;addF*=Math.max(0,1-Math.pow(prog,P.decayExp));}
+
+    const desired=addF*P.rewardPct;
+    const mgrFrac=Math.pow(Math.max(0,1-ratio),P.fadeExp);
+    const mgrEmit=Math.min(manager,desired*mgrFrac);
+    const swapEmit=desired-mgrEmit;
+
+    lpU+=swapU+liqU;
+    lpF = lpF - fOut + addF;           // LP after swap & liquidity add      // LP loses surplus given to users
+    rewardPool += mgrEmit + swapEmit;          // users receive both sources                  // only treasury emissions tracked
+    manager-=mgrEmit;
+
+    // sell-back maintains circ constant
+    const sellF=rewardPool*P.sellPct;
+    if(sellF>0){rewardPool-=sellF;const outU=lpU*sellF/(lpF+sellF);lpF+=sellF;lpU-=outU;}
+
+    const price=lpF?lpU/lpF:0;
+    const circ=lpF+rewardPool;
+    const tvl=lpU*2;
+
+    if(i%P.disp===0||i===P.campaigns){
+      const row=[i,fmt(depU/UNIT),fmt(swapU/UNIT),fmt(liqU/UNIT),fmt(fOut/UNIT),fmt(addF/UNIT),fmt(mgrEmit/UNIT),fmt(swapEmit/UNIT),fmt(manager/UNIT),fmt(lpF/UNIT),fmt(lpU/UNIT),fmt(tvl/UNIT),price.toFixed(6),fmt(circ/UNIT)];
+      body.insertAdjacentHTML('beforeend','<tr>'+row.map(v=>`<td>${v}</td>`).join('')+'</tr>');
+    }
+  }
+  out.appendChild(tbl);
+}
+window.addEventListener('DOMContentLoaded',run);
+</script>
+</body>
+</html>
