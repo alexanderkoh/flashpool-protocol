@@ -1,6 +1,6 @@
 # Flash Campaign Manager (contracts folder)
 cargo test -p flash_campaign_manager -- --nocapture --test-threads=1
-
+cargo test -p flash_campaign_manager test::test_simulate_circulating_supply_growth -- --nocapture --test-threads=1
 
 This folder contains an **experimental Soroban contract** that lets users
 crowd-fund FLASH/USDC liquidity-pair positions and share the resulting rewards.
@@ -47,7 +47,9 @@ Run them with:
 
 ```bash
 cargo test -- --nocapture
-To-Dos / next steps
+```
+
+### To-Dos / next steps
 Security review – overflow checks look good, but external review needed
 
 Edge-case tests – negative paths (TooEarly, NothingToClaim, etc.)
@@ -58,15 +60,59 @@ Production token contracts – replace the reference stellar-asset token in test
 
 Enjoy hacking! 🚀
 
-a deployment of the contract can be found at CAGZUMVZ4BBEH5NG34633IXKQPDVOWJQ2DMUSZ3SCIISVMT2NL2NCNDC on public
+#### a deployment of the contract can be found at CAGZUMVZ4BBEH5NG34633IXKQPDVOWJQ2DMUSZ3SCIISVMT2NL2NCNDC on public
 
 
-To run the tests and hack run this:
+### To run the tests and hack run this:
 
 PS C:\flashtoken\contracts> cargo test -- --nocapture
    Compiling flash_campaign_manager v0.0.0 (C:\flashtoken\github\flashpool-protocol\contracts\flash_campaign_manager)
     Finished `test` profile [unoptimized + debuginfo] target(s) in 7.16s
      Running unittests src\lib.rs (target\debug\deps\flash_campaign_manager-14059600053fe177.exe)
+
+
+## what should the tests do?
+
+Each test line in the plan below gets a comment checkbox; update as they pass/fail.
+    1. Setup:
+        - [x] create the admin account (god)
+        - [x] create ten user accounts (alice, bob, charlie, dave, eve, frank, grace, heidi, ivan, judy)
+        - [x] create three tokens (flash, usdc, and eurc)
+        - [x] mint 10_000_000 flash, 1,000,000 usdc, and 1,250,000 eurc.
+        - [x] distribute all the flash to god, and give a proportional amount of usdc and eurc to each user, with the user with the least receiving 100% less than the user with the most, and at a ratio of 1:1.25 usdc to eurc.  the maximum amount one user can receive is 5000 us and 6250 eurc.
+    - deploy a soroswap factory, and create two pairs, flash/usdc and usdc/eurc
+
+2. initialize the flash campaign manager contract.
+    - ensure that it transfers the flash token to the contract.
+    - ensure it transfers the correct amount of usdc to the contract.
+    - ensure it deposits it into the usdc/flash pair.
+3. create a campaign
+    - create a campaign with the following parameters:
+    - 500 usdc.
+    - target pair is to be the usdc/eurc pair.
+    - target amount is 75,000 usdc worth of liquidity added to the pair.
+    - make sure the campaign correctly purchases flash with the usdc.
+    - ensure the campaign creation then deeposits the remaining usdc along with the purchased flash into the usdc/flash pair.
+    - ensure the campaign allocates the correct amount of flash to the campaign.
+    - the amount of flash allocated to the campaign is the amount of flash that would be needed to sell to the usdc/flash pair to cause the price to drop to below what the price was before the campaign was created.
+    - well the actual amount is 5% more than that required amount.
+    - setup the campaigns so that they are able to end right after all the users join for the tests, so just increment the ledger by the number of blocks required.
+4. join the campaign.
+    - complete a camapgin with only one user.
+    - complete a campaign with all users, but do not meet the target amount.
+    - complete a campaign with all users, and meet the target amount.
+5. compond a campaign.
+    - to compond a camapgin there needs to have been volume to create fees against the target pair.
+    - so after the users have joined the campaign, we need to create trades against the target pair, and generate fees.
+    - then we need to make sure that calling compond on the campaign claims those fees, and then purchases more flash with the fees.
+    - this flash should then be allocated to the users in the campaign and should be able to be claimed.
+6. claim the rewards.
+    - make sure that the users can claim their rewards after the campaign has ended.
+    - make sure that the users can claim their rewards after the campaign has been compounded.
+    - make sure that the users can claim their rewards after the campaign has been compounded and the campaign has ended.
+    - make sure that users can not claim their rewardsd or withdraw their liquidity before the campaign has ended
+
+```bash
 
 running 3 tests
 [Diagnostic Event] contract:CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAARQG5, topics:[log], data:["{}", "[INITIALIZE] initialize(admin Contract(CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM))"]
