@@ -1,21 +1,42 @@
+[workspace.package]
+version      = "0.1.0"
+authors      = ["Tim Baker"]
+license      = "MIT"
+edition      = "2021"
+rust-version = "1.85"
+publish      = false
+
 [workspace]
 resolver = "2"
 
 members = [
     "flash_campaign_manager",
+    "account",
     "external_contracts/soroswap/pair",
     "external_contracts/soroswap/factory-interface",
     "external_contracts/soroswap/token",
-    "external_contracts/soroswap/factory"
+    "external_contracts/soroswap/factory",
+    "external_contracts/passkeys/factory",
+    "external_contracts/passkeys/webauthn",
+    "external_contracts/passkey-kit/smart-wallet",
+    "external_contracts/passkey-kit/smart-wallet-interface",
+    "external_contracts/passkey-kit/example-contract",
+    "external_contracts/passkey-kit/sample-policy",
 ]
 
-[workspace.package]
-version      = "0.1.0"
-rust-version = "1.85"
-
 [workspace.dependencies]
-soroban-sdk        = { version = "22.0.8" }
-soroban-token-sdk  = { version = "22.0.8" }
+soroban-sdk            = { version = "22.0.8" }
+soroban-token-sdk      = { version = "22.0.8" }
+serde                  = { version = "1", default-features = false }
+serde-json-core        = { version = "0.6.0", default-features = false }
+sha256                 = { version = "1.5.0" }
+ed25519-dalek          = { version = "1" }
+base64                 = "0.22.1"
+stellar-strkey         = { version = "0.0.13" }
+smart-wallet-interface = { path = "external_contracts/passkey-kit/smart-wallet-interface" }
+smart-wallet           = { path = "external_contracts/passkey-kit/smart-wallet" }
+example-contract       = { path = "external_contracts/passkey-kit/example-contract" }
+sample-policy         = { path = "external_contracts/passkey-kit/sample-policy" }
 
 [profile.release]
 opt-level       = "z"
