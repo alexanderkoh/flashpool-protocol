@@ -1,0 +1,21 @@
+[package]
+name = "webauthn-account-secp256r1"
+version = "0.1.0"
+authors = ["Stellar Development Foundation <info@stellar.org>"]
+license = "Apache-2.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
+[dependencies]
+soroban-sdk = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde-json-core = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+stellar-xdr = { version = "21.0.1", default-features = false, features = ["std", "curr"] }
+sha256 = "1.4.0"
