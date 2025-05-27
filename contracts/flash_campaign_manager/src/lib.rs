@@ -4,26 +4,21 @@
 
 #![no_std]
 
+use soroban_sdk::bytesn;
+use soroban_sdk::xdr::FromXdr;
 // -------------------------------------------------------------
 // Imports
 //
 use soroban_sdk::{
-    contract,
-    contracterror,
-    contractimpl,
-    contracttype,
-    token::Client as TokenClient,
-    unwrap::UnwrapOptimized,
-    Address,
-    Env,
-    IntoVal,
-    // String, Symbol, TryIntoVal, BytesN, token, token::StellarAssetClient, log as _log
-    Val,
+    contract, contracterror, contractimpl, contracttype, token::Client as TokenClient, unwrap::UnwrapOptimized, Address, BytesN, Env, IntoVal, Val, xdr::ToXdr, Bytes
 };
+use soroban_sdk::auth::Context;
+use smart_wallet_interface::types::Signatures;
 // bring the real Soroswap pair WASM (for on-chain build)
 pub mod pair {
     soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/soroswap_pair.wasm");
 }
+
 mod soroswap_factory {
     soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/soroswap_factory.wasm");
 }
@@ -31,6 +26,11 @@ mod soroswap_factory {
 mod rewards;
 mod storage;
 mod utils;
+mod account_contract {
+    use soroban_sdk::auth::Context;
+    use smart_wallet_interface::types::Signatures;
+    soroban_sdk::contractimport!(file = "../target/wasm32v1-none/release/account.wasm");
+}
 use storage::*;
 use utils::*;
 
@@ -211,11 +211,41 @@ pub trait Manager {
     ) -> Result<u32, FlashErr>;
     fn ucnt_key(e: &Env, id: u32) -> Result<Val, FlashErr>;
     fn join_campaign(e: Env, id: u32, token0_amt: i128, user: Address) -> Result<(), FlashErr>;
+    fn join_campaign_with_account(
+        e: Env,
+        id: u32,
+        token0_amt: i128,
+        user: Address,
+        //account_wasm_hash: BytesN<32>,
+    ) -> Result<(), FlashErr>;
     fn compound(e: Env, id: u32) -> Result<(), FlashErr>;
     fn claim(e: Env, id: u32, user: Address) -> Result<(), FlashErr>;
 
     fn set_surplus_bps(e: Env, admin: Address, bps: u32) -> Result<(), FlashErr>;
     fn set_ttl(e: Env, admin: Address, threshold: u32, bump: u32) -> Result<(), FlashErr>;
+
+    /// Checks if a user's smart account contract is already deployed.
+    /// Uses the same salt derivation as join_campaign_with_account.
+    fn account_exists(e: Env, user: Address) -> bool {
+        // Derive the deterministic salt from the user's address (XDR bytes, hashed)
+        let user_bytes = &user.clone().to_xdr(&e);
+        let user_salt: BytesN<32> = e.crypto().sha256(&user_bytes).into();
+        let account_wasm = account_contract::WASM;
+        let account_wasm_bytes = Bytes::from_slice(&e, account_wasm);
+        let account_wasm_hash: BytesN<32> = e.crypto().sha256(&account_wasm_bytes).into();
+        let deployer = e.deployer();
+        let account_address = deployer.with_current_contract(user_salt).deployed_address();
+        // Use the environment's is_contract_deployed if available (Soroban SDK >= 22.0.0)
+        #[cfg(feature = "testutils")] // For native tests, always return true for deployed contracts
+        {
+            return e.is_contract_deployed(&account_address);
+        }
+        #[cfg(not(feature = "testutils"))]
+        {
+            // On-chain, this will return true if the contract is deployed
+            e.is_contract_deployed(&account_address)
+        }
+    }
 }
 
 #[contract]
@@ -744,6 +774,52 @@ impl Manager for FlashCampaignManager {
         e.storage().instance().set(&key, &up);
         Ok(())
         //log!(&e, "[JOIN CAMPAIGN] join(id {}) user {:?} lp {} weight {}", id, user, lp, w);
+    }
+
+    fn join_campaign_with_account(
+        e: Env,
+        id: u32,
+        token0_amt: i128,
+        user: Address,
+        //account_wasm_hash: BytesN<32>, //this shouldn't be passed from the user.
+    ) -> Result<(), FlashErr> {
+        bump(&e);
+        // 1. Derive smart account address: hash the user's Address bytes for deterministic salt
+        //let mut user_bytes_opt_1 = Bytes::new(&e);
+       // user_bytes_opt_1.append(&user.clone().to_xdr(&e));
+        //let salt: BytesN<32> = e.crypto().sha256(&user_bytes_opt_1).into();
+        let account_wasm = account_contract::WASM;
+         #[cfg(all(not(target_family = "wasm")))]
+        std::println!("join - 1");       
+        let account_wasm_bytes = Bytes::from_slice(&e, account_wasm);
+         #[cfg(all(not(target_family = "wasm")))]
+        std::println!("join - 2");      
+        let account_wasm_hash: BytesN<32> = e.crypto().sha256(&account_wasm_bytes).into(); 
+#[cfg(all(not(target_family = "wasm")))]
+        std::println!("join - 3");   
+        let user_bytes = &user.clone().to_xdr(&e);
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!("join - 4");   
+        //let user_bytes_n: BytesN<32> = BytesN::from_xdr(&e, &user_bytes_2).unwrap();
+        let user_salt: BytesN<32> = e.crypto().sha256(&user_bytes).into();
+        #[cfg(all(not(target_family = "wasm")))]
+        std::println!("[join_campaign_with_account] salt: {:?}", user_salt);        
+        let deployer = e.deployer();
+        // Use deploy_v2 (non-deprecated)
+        let account_address = deployer.with_current_contract(user_salt.clone()).deploy_v2(account_wasm_hash.clone(), ());
+
+        // 2. Transfer funds from user to smart account
+        let c = load_camp(&e, id);
+        let pcli = pair::Client::new(&e, &c.pair);
+        let t0 = pcli.token_0();
+        let t0cli = TokenClient::new(&e, &t0);
+        t0cli.transfer(&user, &account_address, &token0_amt);
+
+        // 3. Call deposit on smart account to transfer funds to manager
+        account_contract::Client::new(&e, &account_address).deposit(&user, &t0, &token0_amt);
+
+        // 4. Call join_campaign as the smart account
+        Self::join_campaign(e, id, token0_amt, account_address)
     }
 
     // ------------------------------------------------------ claim --
