@@ -45,3 +45,7 @@ contracts/target/*
 .vscode
 **/.vscode
 *.log
+contracts/bpssim1.html
+contracts/bpssim1.js
+contracts/bpssimb.js
+contracts/.vs-code-workspace.code-workspace
