@@ -37,7 +37,15 @@ next-env.d.ts
 **/test_snapshots
 **/target/debug
 contracts/target/debug
-
-# Rust build artifacts
-contracts/target/debug
 **/.stellar
+contracts/target/*
+!target/wasm32v1-none/release/*.wasm
+!target/wasm32v1-none/release/deps/*.wasm
+.stellar
+.vscode
+**/.vscode
+*.log
+contracts/bpssim1.html
+contracts/bpssim1.js
+contracts/bpssimb.js
+contracts/.vs-code-workspace.code-workspace

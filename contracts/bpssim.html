@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FLASH Tokenomics Sandbox</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:2rem;background:#0f0f0f;color:#eee}
+label{display:block;margin:.35rem 0 .2rem;font-size:.9rem}
+input[type=number]{width:100%;padding:.4rem;border-radius:4px;border:1px solid #555;background:#1c1c1e;color:#eee}
+button{margin-top:1rem;padding:.6rem 1.4rem;border:none;border-radius:4px;background:#4f46e5;color:#fff;font-weight:600;cursor:pointer}
+button:hover{background:#6366f1}
+#output{margin-top:1.2rem;overflow-x:auto;max-height:64vh;border:1px solid #333}
+table{border-collapse:collapse;width:100%}
+th,td{padding:.32rem .55rem;text-align:right;font-variant-numeric:tabular-nums}
+tr:nth-child(even){background:#1b1b1b}tr:nth-child(odd){background:#161616}
+th{background:#27272a;position:sticky;top:0}
+thead th:first-child,tbody td:first-child{position:sticky;left:0;background:#27272a;text-align:center}
+tbody td:first-child{background:#202022}
+svg{background:#111;margin-bottom:1.1rem}
+.axis path,.axis line{stroke:#888}.grid line{stroke:#333}
+</style>
+</head>
+<body>
+
+<h2>FLASH Tokenomics Sandbox</h2>
+
+<form id="params" onsubmit="event.preventDefault(); run();">
+<div style="max-width:1280px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;">
+  <div><label>Total supply (FLASH)</label><input id="total" type="number" value="10000000" step="100000"></div>
+  <div><label>Initial LP FLASH</label><input id="initF" type="number" value="250000" step="10000"></div>
+  <div><label>Initial LP USDC</label><input id="initU" type="number" value="250" step="10"></div>
+
+  <div><label>Outer min deposit</label><input id="oMin" type="number" value="25" step="1"></div>
+  <div><label>Outer max deposit</label><input id="oMax" type="number" value="2500" step="10"></div>
+  <div><label>99 % between — min</label><input id="mMin" type="number" value="10" step="1"></div>
+  <div><label>99 % between — max</label><input id="mMax" type="number" value="500" step="10"></div>
+
+  <div><label>Treasury reward % (0-1)</label><input id="rewardPct" type="number" value="0.8" step="0.05"></div>
+  <div><label>Sell-back % of rewards</label><input id="sellPct" type="number" value="80" step="5"></div>
+
+  <div><label>Campaigns</label><input id="campaigns" type="number" value="25000" step="1000"></div>
+  <div><label>Display every N rows</label><input id="disp" type="number" value="100" step="10"></div>
+</div>
+<button>Run simulation</button>
+</form>
+
+<!-- three charts -->
+<svg id="circChart"  width="960" height="240"></svg>
+<svg id="priceChart" width="960" height="240"></svg>
+<svg id="tvlChart"   width="960" height="240"></svg>
+
+<div id="output"></div>
+
+<script>
+/* ===== your simulator – unchanged except for the TVL series & row 0 ===== */
+const UNIT=1e7,rnd=(a,b)=>a+Math.random()*(b-a);
+function findOptimalSwapWithSkew(fee,U0,F0,swapOut,surBps=500,maxBps=1e4){
+  const sMin=Math.round(Math.sqrt(U0*(U0+fee))-U0);
+  const swapUsd=Math.min(sMin+Math.floor(fee*surBps/maxBps),fee);
+  const fOut   =swapOut(swapUsd,U0,F0);
+  const liqU   =fee-swapUsd;
+  const fNeed  =Math.ceil(liqU*(F0-fOut)/(U0+swapUsd));
+  return{swapUsd,fOut,fNeed,iterations:1}
+}
+function biasedDeposit(i,tot,oMin,oMax,mMin,mMax){
+  const base=Math.random()<.99?rnd(mMin,mMax):rnd(oMin,oMax);
+  const t=(i-1)/(tot-1),scale=1+Math.pow(t,2.5);
+  return round(Math.min(base*scale,oMax))
+}
+function swapOut(aIn,rIn,rOut){
+  const fee=Math.ceil(aIn*.003),net=aIn-fee;
+  return round(Math.floor(net*rOut/(rIn+net)))
+}
+const round=n=>Number(n.toFixed(0));
+function simulate(cfg){
+  const MAX=cfg.total*UNIT;
+  let lpF=cfg.initF*UNIT,lpU=cfg.initU*UNIT;
+  let treasury=MAX-lpF,prevEmit=0;
+  const rows=[],circSer=[],priceSer=[],tvlSer=[];
+  /* row 0 – initial state */
+  rows.push({step:0,circPct:(MAX-treasury)/MAX,price:lpU/lpF,tvl:lpU*2});
+  circSer.push({x:0,y:(MAX-treasury)/MAX});
+  priceSer.push({x:0,y:lpU/lpF});
+  tvlSer  .push({x:0,y:lpU*2/UNIT});
+  for(let n=1;n<=cfg.campaigns;n++){
+    const fee=n===1?100*UNIT:biasedDeposit(n,cfg.campaigns,cfg.oMin,cfg.oMax,cfg.mMin,cfg.mMax)*UNIT;
+    const circPct=(MAX-treasury)/MAX;
+    const target=Math.pow(circPct,1.2);
+    const surBps=Math.round(cfg.MAX_BPS*circPct*target);
+    const{swapUsd,fOut,fNeed}=findOptimalSwapWithSkew(fee,lpU,lpF,swapOut,surBps);
+    /* pool after swap */
+    lpF-=fOut; lpU+=swapUsd; treasury+=fOut;
+    /* add-liquidity */
+    lpF+=fNeed; treasury-=fNeed;
+    /* excess = swapEmit */
+    const swapEmit=Math.max(0,fOut-fNeed); treasury-=swapEmit;
+    /* treasury emission */
+    const wantMgr=fNeed*cfg.rewardPct;
+    const mgrEmit=Math.min(treasury,wantMgr);
+    const totEmit=mgrEmit+swapEmit; treasury-=mgrEmit;
+    /* optional sell-back */
+    const sellF=prevEmit*cfg.sellPct/100;
+    if(sellF>0){
+      const outU=swapOut(sellF,lpF,lpU);
+      lpF+=sellF; lpU-=outU;
+    }
+    prevEmit=totEmit;
+    const price=lpU/lpF,circPctNow=(MAX-treasury)/MAX,tvl=lpU*2;
+    /* series */
+    circSer.push({x:n,y:circPctNow});
+    priceSer.push({x:n,y:price});
+    tvlSer  .push({x:n,y:tvl/UNIT});
+    if(n%cfg.disp===0||n===1||n===cfg.campaigns){
+      rows.push({
+        step:n,depU:fee/UNIT,swapU:swapUsd/UNIT,liqU:(fee-swapUsd)/UNIT,
+        swapF:fOut/UNIT,liqF:fNeed/UNIT,mgrEmit:mgrEmit/UNIT,swapEmit:swapEmit/UNIT,
+        totEmit:totEmit/UNIT,treasury:treasury/UNIT,lpF:lpF/UNIT,lpU:lpU/UNIT,
+        tvl:tvl/UNIT,price:price,circAbs:(MAX-treasury)/UNIT,circPct:circPctNow
+      })
+    }
+  }
+  return{rows,circSer,priceSer,tvlSer}
+}
+/* ===== simple d3 line helper ===== */
+function draw(svgId,data,label,color,fmt){
+  const svg=d3.select(svgId),W=+svg.attr('width'),H=+svg.attr('height'),
+        M={l:50,r:20,t:15,b:28},w=W-M.l-M.r,h=H-M.t-M.b;
+  svg.selectAll('*').remove();
+  const g=svg.append('g').attr('transform',`translate(${M.l},${M.t})`);
+  const x=d3.scaleLinear().domain(d3.extent(data,d=>d.x)).range([0,w]);
+  const y=d3.scaleLinear().domain([0,d3.max(data,d=>d.y)]).nice().range([h,0]);
+  g.append('g').attr('class','grid').call(d3.axisLeft(y).tickSize(-w).tickFormat('').ticks(5));
+  g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5).tickFormat(fmt));
+  g.append('g').attr('class','axis').attr('transform',`translate(0,${h})`).call(d3.axisBottom(x).ticks(10));
+  g.append('text').attr('fill','#aaa').attr('x',-h/2).attr('y',-38).attr('transform','rotate(-90)').attr('text-anchor','middle').text(label);
+  g.append('path').datum(data).attr('fill','none').attr('stroke',color).attr('stroke-width',2)
+    .attr('d',d3.line().x(d=>x(d.x)).y(d=>y(d.y)));
+}
+/* ===== run & table ===== */
+function run(){
+  const cfg={
+    total:+id('total').value,
+    initF:+id('initF').value,
+    initU:+id('initU').value,
+    oMin:+id('oMin').value,
+    oMax:+id('oMax').value,
+    mMin:+id('mMin').value,
+    mMax:+id('mMax').value,
+    rewardPct:+id('rewardPct').value,
+    sellPct:+id('sellPct').value,
+    campaigns:+id('campaigns').value,
+    disp:+id('disp').value,
+    MAX_BPS:10000
+  };
+  const{rows,circSer,priceSer,tvlSer}=simulate(cfg);
+  /* table */
+  const out=id('output');out.innerHTML='';
+  const tbl=document.createElement('table');
+  const hdr=`<thead><tr><th>#</th><th>depU</th><th>swapU</th><th>liqU</th>
+             <th>swapF</th><th>liqF</th><th>mgrEmit</th><th>swapEmit</th>
+             <th>totEmit</th><th>treasury</th><th>lpF</th><th>lpU</th>
+             <th>TVL</th><th>price</th><th>circAbs</th><th>circ%</th></tr></thead><tbody>`;
+  tbl.innerHTML=hdr+rows.map(r=>rowHtml(r)).join('')+'</tbody>';
+  out.appendChild(tbl);
+  /* charts */
+  draw('#circChart',circSer,'Circ %','lime',d3.format('.2'));
+  draw('#priceChart',priceSer,'Price','steelblue',d3.format('.2'));
+  draw('#tvlChart'  ,tvlSer ,'TVL (USDC)','orange',d3.format('.1'));
+}
+const id=x=>document.getElementById(x);
+const fmt=x=>Number(x).toFixed(2);
+function rowHtml(r){
+  if(r.step===0){return`<tr><td>0</td><td colspan="15">— initial reserves —</td></tr>`}
+  return`<tr><td>${r.step}</td><td>${fmt(r.depU)}</td><td>${fmt(r.swapU)}</td><td>${fmt(r.liqU)}</td>
+          <td>${fmt(r.swapF)}</td><td>${fmt(r.liqF)}</td><td>${fmt(r.mgrEmit)}</td><td>${fmt(r.swapEmit)}</td>
+          <td>${fmt(r.totEmit)}</td><td>${fmt(r.treasury)}</td><td>${fmt(r.lpF)}</td><td>${fmt(r.lpU)}</td>
+          <td>${fmt(r.tvl)}</td><td>${Number(r.price).toFixed(4)}</td><td>${fmt(r.circAbs)}</td><td>${(r.circPct*100).toFixed(2)}%</td></tr>`
+}
+window.addEventListener('DOMContentLoaded',run);
+</script>
+</body>
+</html>

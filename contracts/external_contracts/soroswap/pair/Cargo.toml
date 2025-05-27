@@ -1,0 +1,20 @@
+[package]
+name = "soroswap-pair"
+version = "0.0.1"
+authors = ["esteblock <esteblock@paltalabs.io>"]
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+soroban-token-sdk = { workspace = true }
+num-integer = { version = "0.1.45", default-features = false, features = ["i128"] }
+soroswap-factory-interface = { path = "../factory-interface", version = "0.0.1", package = "soroswap-factory-interface" }
+soroban-token-contract = { path = "../token", version = "0.0.6", package = "soroban-token-contract" } 
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+soroswap-factory-interface = { path = "../factory-interface" }
+soroban-token-contract = { path = "../token" }
