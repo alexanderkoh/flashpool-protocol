@@ -330,6 +330,96 @@ impl CampaignManager {
         Ok(())
     }
 
+    pub fn claim(e: Env, id: u32, user: Address) -> Result<(), FlashError> {
+        if !has_config(&e) {
+            return Err(FlashError::NotInitialized);
+        }
+        user.require_auth();
+        bump_instance(&e);
+
+        let config = get_config(&e);
+        let campaign = load_campaign(&e, id).ok_or(FlashError::CampaignNotFound)?;
+
+        if e.ledger().sequence() < campaign.end_ledger {
+            return Err(FlashError::CampaignNotEnded);
+        }
+
+        let mut pos = load_user_pos(&e, id, &user).ok_or(FlashError::PositionNotFound)?;
+
+        if pos.weight <= 0 {
+            return Err(FlashError::NothingToClaim);
+        }
+
+        // Calculate total reward on first claim
+        if pos.total_reward == 0 {
+            let base = campaign
+                .reward_flash
+                .checked_mul(pos.weight)
+                .unwrap_or(0)
+                .checked_div(campaign.total_weight)
+                .unwrap_or(0);
+
+            let bonus = if campaign.total_lp >= campaign.target_lp {
+                campaign
+                    .bonus_flash
+                    .checked_mul(pos.weight)
+                    .unwrap_or(0)
+                    .checked_div(campaign.total_weight)
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
+            pos.total_reward = base + bonus;
+        }
+
+        // Calculate vested amount
+        let elapsed = e.ledger().sequence().saturating_sub(campaign.end_ledger);
+        let vesting_period = campaign.vesting_end.saturating_sub(campaign.end_ledger);
+        let vested_pct = rewards::compute_vested_pct(elapsed, vesting_period);
+        let vested = pos
+            .total_reward
+            .checked_mul(vested_pct)
+            .unwrap_or(0)
+            .checked_div(10_000)
+            .unwrap_or(0);
+        let claimable = vested - pos.claimed;
+
+        if claimable <= 0 {
+            return Err(FlashError::NothingToClaim);
+        }
+
+        // Transfer FLASH rewards (manager holds these)
+        let cca = e.current_contract_address();
+        let flash_client = soroban_sdk::token::Client::new(&e, &config.flash);
+        flash_client.transfer(&cca, &user, &claimable);
+
+        pos.claimed += claimable;
+        let fully_vested = pos.claimed >= pos.total_reward;
+
+        if fully_vested {
+            // Return LP tokens
+            let lp_client = soroban_sdk::token::Client::new(&e, &campaign.lp_token);
+            lp_client.transfer(&cca, &user, &pos.lp);
+
+            // Mark as claimed (set weight to 0) but keep record for future rolling campaigns
+            pos.weight = 0;
+            save_user_pos(&e, id, &user, &pos);
+        } else {
+            save_user_pos(&e, id, &user, &pos);
+        }
+
+        // Emit event
+        events::emit_reward_claimed(&e, events::RewardClaimedEvent {
+            campaign_id: id,
+            user,
+            flash_amount: claimable,
+            fully_vested,
+        });
+
+        Ok(())
+    }
+
     // --- TinyAMM cross-contract helpers ---
 
     fn get_tinyamm_reserves(e: &Env, config: &CoreConfig) -> (i128, i128) {

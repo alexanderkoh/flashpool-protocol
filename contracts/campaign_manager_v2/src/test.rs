@@ -179,3 +179,94 @@ fn test_create_campaign_not_initialized() {
     );
     assert!(result.is_err());
 }
+
+#[test]
+fn test_claim_vesting_math() {
+    let _env = Env::default();
+
+    let total_reward: i128 = 100_000;
+    let vesting_period: u32 = 100_000;
+
+    // At 0% elapsed
+    let pct = crate::rewards::compute_vested_pct(0, vesting_period);
+    let claimable = total_reward * pct / 10_000 - 0;
+    assert_eq!(claimable, 0);
+
+    // At 50% elapsed
+    let pct = crate::rewards::compute_vested_pct(50_000, vesting_period);
+    let claimable = total_reward * pct / 10_000 - 0;
+    assert_eq!(claimable, 50_000);
+
+    // At 100% elapsed
+    let pct = crate::rewards::compute_vested_pct(100_000, vesting_period);
+    let claimable = total_reward * pct / 10_000 - 0;
+    assert_eq!(claimable, 100_000);
+
+    // After claiming 50_000, claim remaining at 100%
+    let pct = crate::rewards::compute_vested_pct(100_000, vesting_period);
+    let claimable = total_reward * pct / 10_000 - 50_000;
+    assert_eq!(claimable, 50_000);
+}
+
+#[test]
+fn test_claim_before_campaign_ends() {
+    let (_env, admin, flash, usdc, treasury, tinyamm, hoops_router, client) = setup();
+    client.initialize(&admin, &flash, &usdc, &treasury, &tinyamm, &hoops_router);
+
+    let user = Address::generate(&_env);
+    let result = client.try_claim(&1u32, &user);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_reward_distribution_proportional() {
+    let _env = Env::default();
+
+    let r1 = crate::rewards::compute_rank_weight(1, 2);
+    let c1 = crate::rewards::compute_contribution_weight(1000, 1000);
+    let w1 = crate::rewards::compute_score(r1, c1);
+
+    let r2 = crate::rewards::compute_rank_weight(2, 2);
+    let c2 = crate::rewards::compute_contribution_weight(1000, 1000);
+    let w2 = crate::rewards::compute_score(r2, c2);
+
+    let r3 = crate::rewards::compute_rank_weight(5, 2);
+    let c3 = crate::rewards::compute_contribution_weight(500, 1000);
+    let w3 = crate::rewards::compute_score(r3, c3);
+
+    let total_weight = w1 + w2 + w3;
+    let reward_pool: i128 = 100_000;
+
+    let reward1 = reward_pool * w1 / total_weight;
+    let reward2 = reward_pool * w2 / total_weight;
+    let reward3 = reward_pool * w3 / total_weight;
+
+    assert!(reward1 > reward2);
+    assert!(reward2 > reward3);
+    assert!(reward1 > 70_000);
+    assert!(reward1 + reward2 + reward3 <= reward_pool);
+    assert!(reward1 + reward2 + reward3 > reward_pool - 10);
+}
+
+#[test]
+fn test_vesting_schedule_multi_claim() {
+    let _env = Env::default();
+    let total_reward: i128 = 120_000;
+    let vesting_period: u32 = 120_000;
+
+    let pct_25 = crate::rewards::compute_vested_pct(30_000, vesting_period);
+    let claim_1 = total_reward * pct_25 / 10_000;
+    assert_eq!(claim_1, 30_000);
+
+    let pct_75 = crate::rewards::compute_vested_pct(90_000, vesting_period);
+    let vested_75 = total_reward * pct_75 / 10_000;
+    let claim_2 = vested_75 - claim_1;
+    assert_eq!(claim_2, 60_000);
+
+    let pct_100 = crate::rewards::compute_vested_pct(120_000, vesting_period);
+    let vested_100 = total_reward * pct_100 / 10_000;
+    let claim_3 = vested_100 - (claim_1 + claim_2);
+    assert_eq!(claim_3, 30_000);
+
+    assert_eq!(claim_1 + claim_2 + claim_3, total_reward);
+}
