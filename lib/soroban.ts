@@ -1,18 +1,20 @@
 import {
   Contract,
   TransactionBuilder,
-  SorobanRpc,
+  rpc,
   xdr,
   Address,
+  Keypair,
+  Account,
   nativeToScVal,
   scValToNative,
 } from '@stellar/stellar-sdk';
 import { CONTRACTS, SOROBAN_RPC_URL, NETWORK_PASSPHRASE } from './contracts';
 
-let _server: SorobanRpc.Server | null = null;
+let _server: rpc.Server | null = null;
 function getServer() {
   if (!_server) {
-    _server = new SorobanRpc.Server(SOROBAN_RPC_URL);
+    _server = new rpc.Server(SOROBAN_RPC_URL);
   }
   return _server;
 }
@@ -58,15 +60,10 @@ export async function readContract(
   method: string,
   args: xdr.ScVal[],
 ): Promise<any> {
-  const { Keypair } = await import('@stellar/stellar-sdk');
-  // Use a valid zero-balance keypair for simulation (Soroban RPC rejects the all-A address)
   const simulationKeypair = Keypair.random();
-  const simulationPublicKey = simulationKeypair.publicKey();
-
   const contract = new Contract(contractId);
-  const { Account } = await import('@stellar/stellar-sdk');
   const tx = new TransactionBuilder(
-    new Account(simulationPublicKey, '0'),
+    new Account(simulationKeypair.publicKey(), '0'),
     {
       fee: '100',
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -77,10 +74,10 @@ export async function readContract(
     .build();
 
   const sim = await getServer().simulateTransaction(tx);
-  if (SorobanRpc.Api.isSimulationSuccess(sim) && sim.result) {
+  if (rpc.Api.isSimulationSuccess(sim) && sim.result) {
     return scValToNative(sim.result.retval);
   }
-  const errorMsg = SorobanRpc.Api.isSimulationError(sim)
+  const errorMsg = rpc.Api.isSimulationError(sim)
     ? (sim as any).error
     : 'Simulation failed';
   throw new Error(errorMsg);
