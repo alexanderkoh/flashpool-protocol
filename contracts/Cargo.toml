@@ -12,6 +12,8 @@ resolver = "2"
 members = [
     "flash_campaign_manager",
     "account",
+    "treasury",
+    "campaign_manager_v2",
     "external_contracts/soroswap/pair",
     "external_contracts/soroswap/factory-interface",
     "external_contracts/soroswap/token",
