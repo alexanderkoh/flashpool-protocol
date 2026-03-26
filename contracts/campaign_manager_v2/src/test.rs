@@ -162,3 +162,20 @@ fn test_set_defaults() {
     };
     client.set_defaults(&admin, &new_defaults);
 }
+
+#[test]
+fn test_create_campaign_not_initialized() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let contract_id = env.register(crate::CampaignManager, ());
+    let client = CampaignManagerClient::new(&env, &contract_id);
+    let creator = Address::generate(&env);
+    let pool = Address::generate(&env);
+    let lp_token = Address::generate(&env);
+
+    let result = client.try_create_campaign(
+        &100_000i128, &3i128, &pool, &lp_token,
+        &100_000u32, &50_000i128, &0i128, &0i128, &creator,
+    );
+    assert!(result.is_err());
+}
