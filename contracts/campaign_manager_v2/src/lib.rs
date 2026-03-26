@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, Symbol};
 
 pub mod errors;
 pub mod types;
@@ -149,9 +149,10 @@ impl CampaignManager {
         let liq_amount = fee_usdc - swap_amount;
 
         // 3. Swap USDC → FLASH via TinyAMM
-        usdc_client.approve(&cca, &config.tinyamm, &swap_amount, &(e.ledger().sequence() + 1000));
-        let flash_out = Self::tinyamm_swap(
-            &e, &config.tinyamm, &cca, &config.usdc, swap_amount, 0,
+        // Transfer USDC to TinyAMM first, then call swap_received (no nested auth needed)
+        usdc_client.transfer(&cca, &config.tinyamm, &swap_amount);
+        let flash_out = Self::tinyamm_swap_received(
+            &e, &config.tinyamm, &config.usdc, swap_amount, 0, &cca,
         );
         if flash_out <= 0 {
             return Err(FlashError::SwapFailed);
@@ -170,12 +171,13 @@ impl CampaignManager {
         };
 
         // 5. Add liquidity to TinyAMM (deepen core pair)
+        // Use `deposit` — tokens pre-transferred, no auth needed
         if flash_needed > 0 && liq_amount > 0 {
-            usdc_client.approve(&cca, &config.tinyamm, &liq_amount, &(e.ledger().sequence() + 1000));
-            flash_client.approve(&cca, &config.tinyamm, &flash_needed, &(e.ledger().sequence() + 1000));
-            Self::tinyamm_add_liquidity(
+            flash_client.transfer(&cca, &config.tinyamm, &flash_needed);
+            usdc_client.transfer(&cca, &config.tinyamm, &liq_amount);
+            Self::tinyamm_deposit(
                 &e, &config.tinyamm, &cca,
-                flash_needed, liq_amount, 0, 0,
+                flash_needed, liq_amount,
             );
         }
 
@@ -430,48 +432,42 @@ impl CampaignManager {
         )
     }
 
-    fn tinyamm_swap(
+    fn tinyamm_swap_received(
         e: &Env,
         tinyamm: &Address,
-        trader: &Address,
         sell_token: &Address,
         sell_amount: i128,
         min_buy: i128,
+        recipient: &Address,
     ) -> i128 {
-        use soroban_sdk::IntoVal;
         e.invoke_contract::<i128>(
             tinyamm,
-            &soroban_sdk::Symbol::new(e, "swap_exact_in"),
+            &Symbol::new(e, "swap_received"),
             soroban_sdk::vec![
                 e,
-                trader.into_val(e),
                 sell_token.into_val(e),
                 sell_amount.into_val(e),
                 min_buy.into_val(e),
+                recipient.into_val(e),
             ],
         )
     }
 
-    fn tinyamm_add_liquidity(
+    fn tinyamm_deposit(
         e: &Env,
         tinyamm: &Address,
         to: &Address,
         amt0: i128,
         amt1: i128,
-        min0: i128,
-        min1: i128,
     ) -> (i128, i128, i128) {
-        use soroban_sdk::IntoVal;
         e.invoke_contract::<(i128, i128, i128)>(
             tinyamm,
-            &soroban_sdk::Symbol::new(e, "add_liquidity"),
+            &Symbol::new(e, "deposit"),
             soroban_sdk::vec![
                 e,
                 to.into_val(e),
                 amt0.into_val(e),
                 amt1.into_val(e),
-                min0.into_val(e),
-                min1.into_val(e),
             ],
         )
     }
