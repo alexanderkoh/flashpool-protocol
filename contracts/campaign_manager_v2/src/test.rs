@@ -100,3 +100,65 @@ fn test_compute_vested_pct_over() {
     let pct = rewards::compute_vested_pct(200_000, 100_000);
     assert_eq!(pct, 10_000);
 }
+
+// --- Initialize / set_defaults tests ---
+
+use soroban_sdk::{testutils::Address as _, Address};
+use crate::types::*;
+use crate::CampaignManagerClient;
+
+fn default_defaults() -> ProtocolDefaults {
+    ProtocolDefaults {
+        gamma: 2,
+        vesting_period: 100_000,
+        surplus_bps: 500,
+        ttl_thresh: 172_800,
+        ttl_bump: 241_920,
+    }
+}
+
+fn setup() -> (Env, Address, Address, Address, Address, Address, Address, CampaignManagerClient<'static>) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let flash = env.register_stellar_asset_contract_v2(admin.clone()).address().clone();
+    let usdc = env.register_stellar_asset_contract_v2(admin.clone()).address().clone();
+    let treasury = Address::generate(&env);
+    let tinyamm = Address::generate(&env);
+    let hoops_router = Address::generate(&env);
+
+    let contract_id = env.register(crate::CampaignManager, ());
+    let client = CampaignManagerClient::new(&env, &contract_id);
+
+    (env, admin, flash, usdc, treasury, tinyamm, hoops_router, client)
+}
+
+#[test]
+fn test_initialize() {
+    let (_env, admin, flash, usdc, treasury, tinyamm, hoops_router, client) = setup();
+    client.initialize(&admin, &flash, &usdc, &treasury, &tinyamm, &hoops_router);
+}
+
+#[test]
+#[should_panic(expected = "Error(Contract, #1)")]
+fn test_double_initialize() {
+    let (_env, admin, flash, usdc, treasury, tinyamm, hoops_router, client) = setup();
+    client.initialize(&admin, &flash, &usdc, &treasury, &tinyamm, &hoops_router);
+    client.initialize(&admin, &flash, &usdc, &treasury, &tinyamm, &hoops_router);
+}
+
+#[test]
+fn test_set_defaults() {
+    let (_env, admin, flash, usdc, treasury, tinyamm, hoops_router, client) = setup();
+    client.initialize(&admin, &flash, &usdc, &treasury, &tinyamm, &hoops_router);
+
+    let new_defaults = ProtocolDefaults {
+        gamma: 3,
+        vesting_period: 200_000,
+        surplus_bps: 1000,
+        ttl_thresh: 172_800,
+        ttl_bump: 241_920,
+    };
+    client.set_defaults(&admin, &new_defaults);
+}
