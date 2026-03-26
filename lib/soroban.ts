@@ -9,7 +9,13 @@ import {
 } from '@stellar/stellar-sdk';
 import { CONTRACTS, SOROBAN_RPC_URL, NETWORK_PASSPHRASE } from './contracts';
 
-const server = new SorobanRpc.Server(SOROBAN_RPC_URL);
+let _server: SorobanRpc.Server | null = null;
+function getServer() {
+  if (!_server) {
+    _server = new SorobanRpc.Server(SOROBAN_RPC_URL);
+  }
+  return _server;
+}
 
 export async function buildContractCall(
   contractId: string,
@@ -17,7 +23,7 @@ export async function buildContractCall(
   args: xdr.ScVal[],
   publicKey: string,
 ): Promise<string> {
-  const account = await server.getAccount(publicKey);
+  const account = await getServer().getAccount(publicKey);
   const contract = new Contract(contractId);
 
   const tx = new TransactionBuilder(account, {
@@ -28,19 +34,19 @@ export async function buildContractCall(
     .setTimeout(30)
     .build();
 
-  const prepared = await server.prepareTransaction(tx);
+  const prepared = await getServer().prepareTransaction(tx);
   return prepared.toXDR();
 }
 
 export async function submitTransaction(signedXdr: string): Promise<any> {
   const tx = TransactionBuilder.fromXDR(signedXdr, NETWORK_PASSPHRASE);
-  const response = await server.sendTransaction(tx);
+  const response = await getServer().sendTransaction(tx);
 
   if (response.status === 'PENDING') {
-    let result = await server.getTransaction(response.hash);
+    let result = await getServer().getTransaction(response.hash);
     while (result.status === 'NOT_FOUND') {
       await new Promise((r) => setTimeout(r, 1000));
-      result = await server.getTransaction(response.hash);
+      result = await getServer().getTransaction(response.hash);
     }
     return result;
   }
@@ -67,7 +73,7 @@ export async function readContract(
     .setTimeout(30)
     .build();
 
-  const sim = await server.simulateTransaction(tx);
+  const sim = await getServer().simulateTransaction(tx);
   if (SorobanRpc.Api.isSimulationSuccess(sim) && sim.result) {
     return scValToNative(sim.result.retval);
   }

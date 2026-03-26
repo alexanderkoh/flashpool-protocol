@@ -14,7 +14,7 @@ import { RewardsPoolCard } from "@/components/rewards/rewards-pool-card";
 import { buildClaim, submitTransaction } from '@/lib/soroban';
 
 export default function RewardsPage() {
-  const { connected, publicKey, signTransaction } = useWallet();
+  const { isConnected, publicKey, signTransaction } = useWallet();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -58,7 +58,7 @@ export default function RewardsPage() {
                     size="lg"
                     className="w-full"
                     onClick={() => handleClaim(0)}
-                    disabled={isLoading || !connected}
+                    disabled={isLoading || !isConnected}
                   >
                     {isLoading ? "Processing..." : "Claim All Rewards"}
                   </Button>
