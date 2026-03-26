@@ -11,31 +11,28 @@ import { useToast } from "@/hooks/use-toast";
 import { useWallet } from "@/hooks/use-wallet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RewardsPoolCard } from "@/components/rewards/rewards-pool-card";
+import { buildClaim, submitTransaction } from '@/lib/soroban';
 
 export default function RewardsPage() {
-  const { connected } = useWallet();
+  const { connected, publicKey, signTransaction } = useWallet();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleClaim = async () => {
-    if (!connected) {
-      toast({
-        title: "Wallet not connected",
-        description: "Please connect your Freighter wallet first",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const handleClaim = async (campaignId: number) => {
+    if (!publicKey) return;
     setIsLoading(true);
-    // Simulate blockchain transaction
-    setTimeout(() => {
+    try {
+      const xdr = await buildClaim(campaignId, publicKey);
+      const signed = await signTransaction(xdr);
+      if (signed) {
+        await submitTransaction(signed);
+        toast({ title: 'Rewards claimed!' });
+      }
+    } catch (error: any) {
+      toast({ title: 'Claim failed', description: error.message, variant: 'destructive' });
+    } finally {
       setIsLoading(false);
-      toast({
-        title: "Rewards Claimed!",
-        description: "456.21 FLASH has been transferred to your wallet",
-      });
-    }, 2000);
+    }
   };
 
   return (
@@ -57,10 +54,10 @@ export default function RewardsPage() {
                 <RewardsCounter value={456.21} />
                 
                 <div className="mt-6">
-                  <Button 
-                    size="lg" 
-                    className="w-full" 
-                    onClick={handleClaim} 
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={() => handleClaim(0)}
                     disabled={isLoading || !connected}
                   >
                     {isLoading ? "Processing..." : "Claim All Rewards"}

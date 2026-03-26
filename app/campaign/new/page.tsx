@@ -9,6 +9,8 @@ import { Stepper } from "@/components/ui/stepper";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useToast } from "@/hooks/use-toast";
+import { buildCreateCampaign, submitTransaction } from '@/lib/soroban';
+import { useWallet } from '@/hooks/use-wallet';
 
 const steps = [
   { id: 'select-pool', title: 'Select Pool' },
@@ -19,6 +21,7 @@ const steps = [
 
 export default function NewCampaignPage() {
   const [currentStep, setCurrentStep] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [campaignData, setCampaignData] = useState({
     poolId: '',
     poolName: '',
@@ -29,9 +32,18 @@ export default function NewCampaignPage() {
     boostStartDay: 15,
     boostDuration: 5,
     boostMultiplier: 2,
+    contributionToken: '',
+    contributionAmount: 0,
+    flashRewardAmount: 0,
+    selectedAdapterId: null as number | null,
+    selectedPoolAddress: null as string | null,
+    selectedLpToken: null as string | null,
+    durationLedgers: 100000,
+    bonusFlash: 0,
   });
   const router = useRouter();
   const { toast } = useToast();
+  const { publicKey, signTransaction } = useWallet();
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -47,13 +59,35 @@ export default function NewCampaignPage() {
     }
   };
 
-  const handleSubmit = () => {
-    // In a real app, we would submit to the blockchain here
-    toast({
-      title: "Campaign Created!",
-      description: `Your campaign for ${campaignData.poolName} has been launched successfully.`,
-    });
-    router.push('/explore');
+  const handleSubmit = async () => {
+    if (!publicKey) {
+      toast({ title: 'Connect wallet first', variant: 'destructive' });
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      const xdr = await buildCreateCampaign(
+        BigInt(Math.floor(campaignData.contributionAmount * 1e7)),
+        BigInt(campaignData.selectedAdapterId ?? 3),
+        campaignData.selectedPoolAddress ?? '',
+        campaignData.selectedLpToken ?? '',
+        campaignData.durationLedgers ?? 100000,
+        BigInt(Math.floor(campaignData.targetTVL * 1e7)),
+        BigInt(Math.floor((campaignData.bonusFlash ?? 0) * 1e7)),
+        BigInt(0),
+        publicKey,
+      );
+      const signed = await signTransaction(xdr);
+      if (signed) {
+        const result = await submitTransaction(signed);
+        toast({ title: 'Campaign created!' });
+        router.push('/explore');
+      }
+    } catch (error: any) {
+      toast({ title: 'Failed to create campaign', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -86,8 +120,8 @@ export default function NewCampaignPage() {
             >
               Back
             </Button>
-            <Button onClick={handleNext}>
-              {currentStep === steps.length - 1 ? "Launch Campaign" : "Next"}
+            <Button onClick={handleNext} disabled={isSubmitting}>
+              {currentStep === steps.length - 1 ? (isSubmitting ? "Launching..." : "Launch Campaign") : "Next"}
             </Button>
           </div>
         </GlassPanel>

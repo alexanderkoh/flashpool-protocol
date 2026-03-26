@@ -9,10 +9,12 @@ import { useWallet } from '@/hooks/use-wallet';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/lib/utils';
 import { WalletIcon, ArrowRightIcon, LockIcon, AlertCircleIcon } from 'lucide-react';
+import { buildJoinCampaign, submitTransaction } from '@/lib/soroban';
 
 export function DepositPanel({ id }: { id: string }) {
-  const { connected, connect } = useWallet();
+  const { connected, connect, publicKey, signTransaction } = useWallet();
   const { toast } = useToast();
+  const tokenAddress = process.env.NEXT_PUBLIC_USDC_TOKEN_ID ?? '';
   const [amount, setAmount] = useState<number>(500);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   
@@ -40,34 +42,33 @@ export function DepositPanel({ id }: { id: string }) {
   };
   
   const handleDeposit = async () => {
-    if (!connected) {
-      toast({
-        title: "Wallet not connected",
-        description: "Please connect your Freighter wallet first",
-        variant: "destructive",
-      });
+    if (!publicKey) {
+      toast({ title: 'Connect wallet first', variant: 'destructive' });
       return;
     }
-    
     if (amount <= 0) {
-      toast({
-        title: "Invalid amount",
-        description: "Please enter an amount greater than 0",
-        variant: "destructive",
-      });
+      toast({ title: 'Enter an amount', variant: 'destructive' });
       return;
     }
-    
     setIsSubmitting(true);
-    
-    // Simulate blockchain transaction
-    setTimeout(() => {
+    try {
+      const campaignId = parseInt(id, 10);
+      const xdr = await buildJoinCampaign(
+        campaignId,
+        BigInt(Math.floor(amount * 1e7)),
+        tokenAddress,
+        publicKey,
+      );
+      const signed = await signTransaction(xdr);
+      if (signed) {
+        await submitTransaction(signed);
+        toast({ title: 'Deposit successful!' });
+      }
+    } catch (error: any) {
+      toast({ title: 'Deposit failed', description: error.message, variant: 'destructive' });
+    } finally {
       setIsSubmitting(false);
-      toast({
-        title: "Deposit Successful!",
-        description: `You have deposited ${formatCurrency(amount, true)} to the pool.`,
-      });
-    }, 2000);
+    }
   };
   
   return (
