@@ -270,8 +270,8 @@ impl CampaignManager {
         // 1. Transfer token from user to manager
         token_client.transfer(&user, &cca, &amount);
 
-        // 2. Swap half via Hoops adapter and deposit both sides
-        let lp_received = Self::adapter_swap_and_deposit(
+        // 2. Swap half and deposit both sides into target pool
+        let lp_received = Self::swap_and_deposit(
             &e, &config, &campaign, &token, amount,
         )?;
 
@@ -400,9 +400,17 @@ impl CampaignManager {
         let fully_vested = pos.claimed >= pos.total_reward;
 
         if fully_vested {
-            // Return LP tokens
-            let lp_client = soroban_sdk::token::Client::new(&e, &campaign.lp_token);
-            lp_client.transfer(&cca, &user, &pos.lp);
+            // Return LP tokens via pool's lp_transfer
+            e.invoke_contract::<()>(
+                &campaign.pool_address,
+                &Symbol::new(&e, "lp_transfer"),
+                soroban_sdk::vec![
+                    &e,
+                    cca.clone().into_val(&e),
+                    user.clone().into_val(&e),
+                    pos.lp.into_val(&e),
+                ],
+            );
 
             // Mark as claimed (set weight to 0) but keep record for future rolling campaigns
             pos.weight = 0;
@@ -472,71 +480,83 @@ impl CampaignManager {
         )
     }
 
-    // --- Hoops adapter cross-contract helper ---
+    // --- Pool swap + deposit helper ---
+    // adapter_id 0 = direct TinyAMM pool (swap_received + deposit)
+    // adapter_id 1+ = Hoops adapter (future)
 
-    fn adapter_swap_and_deposit(
+    fn swap_and_deposit(
         e: &Env,
         config: &CoreConfig,
         campaign: &Campaign,
         sell_token: &Address,
         total_amount: i128,
     ) -> Result<i128, FlashError> {
-        use soroban_sdk::IntoVal;
-
-        // Get adapter address from Hoops router
-        let adapter_address: Address = e.invoke_contract(
-            &config.hoops_router,
-            &soroban_sdk::Symbol::new(e, "get_adapter"),
-            soroban_sdk::vec![e, campaign.adapter_id.into_val(e)],
-        );
-
         let cca = e.current_contract_address();
         let token_client = soroban_sdk::token::Client::new(e, sell_token);
+        let pool = &campaign.pool_address;
 
         let half = total_amount / 2;
         let remaining = total_amount - half;
 
-        // Transfer half to adapter for swap
-        token_client.transfer(&cca, &adapter_address, &half);
+        if campaign.adapter_id == 0 {
+            // Direct TinyAMM pool: use swap_received + deposit
+            // 1. Transfer half to pool for swap
+            token_client.transfer(&cca, pool, &half);
 
-        // Call adapter swap_in_pool
-        let swap_out: i128 = e.invoke_contract(
-            &adapter_address,
-            &soroban_sdk::Symbol::new(e, "swap_in_pool"),
-            soroban_sdk::vec![
-                e,
-                campaign.pool_address.clone().into_val(e),
-                sell_token.into_val(e),
-                half.into_val(e),
-                0i128.into_val(e),        // min_out
-                cca.clone().into_val(e),  // to
-            ],
-        );
+            // 2. Swap via pool's swap_received (no auth needed)
+            let buy_amount: i128 = e.invoke_contract(
+                pool,
+                &Symbol::new(e, "swap_received"),
+                soroban_sdk::vec![
+                    e,
+                    sell_token.into_val(e),
+                    half.into_val(e),
+                    0i128.into_val(e),
+                    cca.clone().into_val(e),
+                ],
+            );
 
-        // Transfer remaining sell_token to adapter for liquidity
-        token_client.transfer(&cca, &adapter_address, &remaining);
+            // 3. Get pool tokens to figure out which is which
+            let (pool_token0, pool_token1): (Address, Address) = e.invoke_contract(
+                pool,
+                &Symbol::new(e, "get_tokens"),
+                soroban_sdk::vec![e],
+            );
+            let buy_token = if *sell_token == pool_token0 { pool_token1 } else { pool_token0 };
 
-        // Track LP balance before deposit
-        let lp_client = soroban_sdk::token::Client::new(e, &campaign.lp_token);
-        let lp_before = lp_client.balance(&cca);
+            // 4. Transfer both tokens to pool for deposit
+            token_client.transfer(&cca, pool, &remaining);
+            soroban_sdk::token::Client::new(e, &buy_token).transfer(&cca, pool, &buy_amount);
 
-        // Call adapter add_liq_in_pool
-        e.invoke_contract::<()>(
-            &adapter_address,
-            &soroban_sdk::Symbol::new(e, "add_liq_pool"),
-            soroban_sdk::vec![
-                e,
-                campaign.pool_address.clone().into_val(e),
-                remaining.into_val(e),
-                swap_out.into_val(e),
-                cca.clone().into_val(e),  // LP tokens sent here
-            ],
-        );
+            // 5. Track LP balance before deposit
+            let lp_before = Self::get_lp_balance(e, pool, &cca);
 
-        let lp_after = lp_client.balance(&cca);
-        let lp_received = lp_after - lp_before;
+            // 6. Deposit (no auth needed)
+            e.invoke_contract::<(i128, i128, i128)>(
+                pool,
+                &Symbol::new(e, "deposit"),
+                soroban_sdk::vec![
+                    e,
+                    cca.clone().into_val(e),
+                    remaining.into_val(e),
+                    buy_amount.into_val(e),
+                ],
+            );
 
-        Ok(lp_received)
+            let lp_after = Self::get_lp_balance(e, pool, &cca);
+            Ok(lp_after - lp_before)
+        } else {
+            // Hoops adapter path (future — requires deployed adapters)
+            Err(FlashError::AdapterCallFailed)
+        }
+    }
+
+    fn get_lp_balance(e: &Env, pool: &Address, owner: &Address) -> i128 {
+        e.invoke_contract::<i128>(
+            pool,
+            &Symbol::new(e, "lp_balance"),
+            soroban_sdk::vec![e, owner.into_val(e)],
+        )
     }
 }
 
