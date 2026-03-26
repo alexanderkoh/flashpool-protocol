@@ -16,52 +16,37 @@ import { Button } from '@/components/ui/button';
 import { formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { InfoIcon, RefreshCwIcon } from 'lucide-react';
+import { readContract } from '@/lib/soroban';
+import { CONTRACTS } from '@/lib/contracts';
 
-// Mock pool data with underlying tokens
+// Real pool data — one deployed TinyAMM pool for MVP
 const availablePools = [
-  { id: 'pool-1', name: 'USDC/XLM', tvl: '$1.5M', volume: '$350K', tokens: ['USDC', 'XLM'] },
-  { id: 'pool-2', name: 'ETH/FLASH', tvl: '$750K', volume: '$180K', tokens: ['ETH', 'FLASH'] },
-  { id: 'pool-3', name: 'BTC/USDC', tvl: '$1.2M', volume: '$400K', tokens: ['BTC', 'USDC'] },
-  { id: 'pool-4', name: 'XRP/FLASH', tvl: '$380K', volume: '$90K', tokens: ['XRP', 'FLASH'] },
-  { id: 'pool-5', name: 'TBT/USDC', tvl: '$620K', volume: '$120K', tokens: ['TBT', 'USDC'] },
+  {
+    id: CONTRACTS.tinyamm,
+    name: 'FLASH/USDC',
+    tvl: 'Live',
+    volume: 'Live',
+    tokens: ['USDC'], // Users deposit USDC, contract handles the swap
+    contractAddress: CONTRACTS.tinyamm,
+  },
 ];
 
-// Mock function to simulate fetching FLASH equivalent
-// In a real app, this would involve an API call to an oracle or DEX
+// Fetch the FLASH equivalent from TinyAMM reserves
 const getFlashEquivalent = async (contributionToken: string, contributionAmount: number): Promise<number> => {
   if (!contributionToken || contributionAmount <= 0) return 0;
-  console.log(`Fetching FLASH quote for ${contributionAmount} ${contributionToken}...`);
-  await new Promise(resolve => setTimeout(resolve, 750)); // Simulate network delay
-  let rate = 1;
-  switch (contributionToken) {
-    case 'USDC': rate = 0.10; break; // 1 USDC = 10 FLASH (example rate)
-    case 'XLM': rate = 5; break;    // 1 XLM = 0.2 FLASH
-    case 'ETH': rate = 0.005; break; // 1 ETH = 200 FLASH
-    case 'BTC': rate = 0.0001; break; // 1 BTC = 10000 FLASH
-    case 'XRP': rate = 10; break;    // 1 XRP = 0.1 FLASH
-    case 'TBT': rate = 1; break;     // 1 TBT = 1 FLASH (example)
-    case 'FLASH': rate = 1; break;   // 1 FLASH = 1 FLASH
-    default: rate = 1; // Default if token unknown, though UI should prevent this
+  try {
+    const reserves = await readContract(CONTRACTS.tinyamm, 'get_reserves', []);
+    // reserves = [usdc_reserve, flash_reserve] (token0=USDC, token1=FLASH sorted lex)
+    const [usdcReserve, flashReserve] = reserves;
+    // 1 USDC = flashReserve/usdcReserve FLASH
+    const rate = Number(flashReserve) / Number(usdcReserve);
+    console.log(`[TinyAMM] Reserves — USDC: ${usdcReserve}, FLASH: ${flashReserve}, rate: ${rate}`);
+    return contributionAmount * rate;
+  } catch (error) {
+    console.warn('[TinyAMM] Failed to fetch reserves, using fallback rate:', error);
+    // Fallback rate
+    return contributionAmount * 10;
   }
-  const flashAmount = contributionAmount / rate; // This logic seems inverted, corrected below
-  // Corrected logic: if 1 USDC = 10 FLASH, then amountUSDC * 10 = amountFLASH
-  // If rate is how many ContribToken per 1 FLASH (e.g. 0.1 USDC for 1 FLASH), then contribAmount / rate = FLASHAmount
-  // If rate is how many FLASH per 1 ContribToken (e.g. 1 USDC = 10 FLASH), then contribAmount * rate = FLASHAmount
-
-  // Let's define `rate` as: How many FLASH tokens per 1 unit of contributionToken.
-  switch (contributionToken) {
-    case 'USDC': rate = 10; break;  // 1 USDC = 10 FLASH
-    case 'XLM': rate = 0.2; break; // 1 XLM = 0.2 FLASH
-    case 'ETH': rate = 2000; break; // 1 ETH = 2000 FLASH (updated example)
-    case 'BTC': rate = 30000; break;// 1 BTC = 30000 FLASH (updated example)
-    case 'XRP': rate = 0.5; break;  // 1 XRP = 0.5 FLASH
-    case 'TBT': rate = 1; break;    // 1 TBT = 1 FLASH
-    case 'FLASH': rate = 1; break;  // Direct contribution of FLASH
-    default: rate = 0; // Should not happen if UI is correct
-  }
-  const calculatedFlashAmount = contributionAmount * rate;
-  console.log(`Quoted: ${contributionAmount} ${contributionToken} = ${calculatedFlashAmount} FLASH`);
-  return calculatedFlashAmount;
 };
 
 interface CampaignFormProps {

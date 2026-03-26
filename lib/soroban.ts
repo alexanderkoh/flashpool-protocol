@@ -58,12 +58,15 @@ export async function readContract(
   method: string,
   args: xdr.ScVal[],
 ): Promise<any> {
+  const { Keypair } = await import('@stellar/stellar-sdk');
+  // Use a valid zero-balance keypair for simulation (Soroban RPC rejects the all-A address)
+  const simulationKeypair = Keypair.random();
+  const simulationPublicKey = simulationKeypair.publicKey();
+
   const contract = new Contract(contractId);
+  const { Account } = await import('@stellar/stellar-sdk');
   const tx = new TransactionBuilder(
-    new (await import('@stellar/stellar-sdk')).Account(
-      'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
-      '0',
-    ),
+    new Account(simulationPublicKey, '0'),
     {
       fee: '100',
       networkPassphrase: NETWORK_PASSPHRASE,
@@ -77,7 +80,10 @@ export async function readContract(
   if (SorobanRpc.Api.isSimulationSuccess(sim) && sim.result) {
     return scValToNative(sim.result.retval);
   }
-  throw new Error('Simulation failed');
+  const errorMsg = SorobanRpc.Api.isSimulationError(sim)
+    ? (sim as any).error
+    : 'Simulation failed';
+  throw new Error(errorMsg);
 }
 
 // --- Typed helpers ---

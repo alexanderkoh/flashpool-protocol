@@ -12,7 +12,7 @@ import { WalletIcon, ArrowRightIcon, LockIcon, AlertCircleIcon } from 'lucide-re
 import { buildJoinCampaign, submitTransaction } from '@/lib/soroban';
 
 export function DepositPanel({ id }: { id: string }) {
-  const { connected, connect, publicKey, signTransaction } = useWallet();
+  const { isConnected: connected, connect, publicKey, signTransaction } = useWallet();
   const { toast } = useToast();
   const tokenAddress = process.env.NEXT_PUBLIC_USDC_TOKEN_ID ?? '';
   const [amount, setAmount] = useState<number>(500);
@@ -111,25 +111,25 @@ export function DepositPanel({ id }: { id: string }) {
             
             <div className="bg-muted/30 rounded-lg p-4 space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">APY</span>
-                <span>28.4%</span>
+                <span className="text-muted-foreground">Deposit Token</span>
+                <span>USDC</span>
               </div>
-              
+
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Est. FLASH Rewards</span>
-                <span>{formatCurrency(expectedRewards)} FLASH</span>
+                <span className="text-muted-foreground">Deposit Amount</span>
+                <span>{formatCurrency(amount)} USDC</span>
               </div>
-              
+
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Boost Multiplier</span>
-                <span>2x (May 19-24)</span>
+                <span className="text-muted-foreground">Campaign</span>
+                <span>#{id}</span>
               </div>
             </div>
             
             <div className="flex items-center gap-2 bg-secondary/5 border border-secondary/20 rounded-lg p-3 text-xs">
               <LockIcon className="h-4 w-4 text-secondary shrink-0" />
               <p>
-                Your liquidity will be deposited into the Hoops USDC/XLM pool and can be withdrawn at any time.
+                Your USDC will be deposited into the campaign pool. Rewards are paid in FLASH tokens.
               </p>
             </div>
             

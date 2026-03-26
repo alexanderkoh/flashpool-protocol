@@ -12,24 +12,30 @@ export function CampaignGrid() {
 
   useEffect(() => {
     async function fetchCampaigns() {
-      try {
-        const fetched = [];
-        for (let id = 1; id <= 20; id++) {
-          try {
-            const campaign = await getCampaign(id);
-            if (campaign) {
-              fetched.push({ id, ...campaign });
-            }
-          } catch {
-            break; // No more campaigns
+      const fetched = [];
+      let consecutiveErrors = 0;
+      for (let id = 1; id <= 20; id++) {
+        try {
+          console.log(`[CampaignGrid] Fetching campaign #${id}...`);
+          const campaign = await getCampaign(id);
+          if (campaign) {
+            console.log(`[CampaignGrid] Campaign #${id} found:`, campaign);
+            fetched.push({ id, ...campaign });
+            consecutiveErrors = 0; // reset on success
+          }
+        } catch (error: any) {
+          consecutiveErrors++;
+          console.warn(`[CampaignGrid] Campaign #${id} fetch failed:`, error?.message ?? error);
+          // Only stop if we see 3+ consecutive errors (IDs may not be contiguous)
+          if (consecutiveErrors >= 3) {
+            console.log('[CampaignGrid] 3 consecutive errors — stopping scan.');
+            break;
           }
         }
-        setCampaigns(fetched);
-      } catch (error) {
-        console.error('Failed to fetch campaigns:', error);
-      } finally {
-        setLoading(false);
       }
+      console.log(`[CampaignGrid] Total campaigns fetched: ${fetched.length}`);
+      setCampaigns(fetched);
+      setLoading(false);
     }
     fetchCampaigns();
   }, []);
