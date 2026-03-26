@@ -238,6 +238,98 @@ impl CampaignManager {
         Ok(id)
     }
 
+    pub fn join_campaign(
+        e: Env,
+        id: u32,
+        amount: i128,
+        token: Address,
+        user: Address,
+    ) -> Result<(), FlashError> {
+        if !has_config(&e) {
+            return Err(FlashError::NotInitialized);
+        }
+        user.require_auth();
+        bump_instance(&e);
+
+        if amount <= 0 {
+            return Err(FlashError::InsufficientAmount);
+        }
+
+        let config = get_config(&e);
+        let mut campaign = load_campaign(&e, id).ok_or(FlashError::CampaignNotFound)?;
+
+        if e.ledger().sequence() >= campaign.end_ledger {
+            return Err(FlashError::CampaignAlreadyEnded);
+        }
+
+        let cca = e.current_contract_address();
+        let token_client = soroban_sdk::token::Client::new(&e, &token);
+
+        // 1. Transfer token from user to manager
+        token_client.transfer(&user, &cca, &amount);
+
+        // 2. Swap half via Hoops adapter and deposit both sides
+        let lp_received = Self::adapter_swap_and_deposit(
+            &e, &config, &campaign, &token, amount,
+        )?;
+
+        if lp_received <= 0 {
+            return Err(FlashError::InsufficientAmount);
+        }
+
+        // 3. Assign rank
+        campaign.user_count += 1;
+        let rank = campaign.user_count;
+
+        // 4. Compute weight
+        let rank_weight = rewards::compute_rank_weight(rank, config.defaults.gamma);
+        let contrib_weight = rewards::compute_contribution_weight(lp_received, campaign.target_lp);
+        let new_weight = rewards::compute_score(rank_weight, contrib_weight);
+
+        // 5. Handle re-join: accumulate
+        let existing = load_user_pos(&e, id, &user);
+        let (final_lp, final_weight, final_rank) = if let Some(old) = existing {
+            let combined_lp = old.lp + lp_received;
+            let combined_contrib = rewards::compute_contribution_weight(combined_lp, campaign.target_lp);
+            let combined_weight = rewards::compute_score(
+                rewards::compute_rank_weight(old.rank, config.defaults.gamma),
+                combined_contrib,
+            );
+            // Adjust campaign total weight: remove old, add new
+            campaign.total_weight -= old.weight;
+            (combined_lp, combined_weight, old.rank)
+        } else {
+            (lp_received, new_weight, rank)
+        };
+
+        // 6. Update campaign totals
+        campaign.total_lp += lp_received;
+        campaign.total_weight += final_weight;
+        save_campaign(&e, id, &campaign);
+
+        // 7. Store user position
+        let pos = UserPos {
+            lp: final_lp,
+            weight: final_weight,
+            rank: final_rank,
+            joined_ledger: e.ledger().sequence(),
+            total_reward: 0,
+            claimed: 0,
+        };
+        save_user_pos(&e, id, &user, &pos);
+
+        // 8. Emit event
+        events::emit_user_joined(&e, events::UserJoinedEvent {
+            campaign_id: id,
+            user,
+            lp: final_lp,
+            rank: final_rank,
+            weight: final_weight,
+        });
+
+        Ok(())
+    }
+
     // --- TinyAMM cross-contract helpers ---
 
     fn get_tinyamm_reserves(e: &Env, config: &CoreConfig) -> (i128, i128) {
@@ -292,6 +384,73 @@ impl CampaignManager {
                 min1.into_val(e),
             ],
         )
+    }
+
+    // --- Hoops adapter cross-contract helper ---
+
+    fn adapter_swap_and_deposit(
+        e: &Env,
+        config: &CoreConfig,
+        campaign: &Campaign,
+        sell_token: &Address,
+        total_amount: i128,
+    ) -> Result<i128, FlashError> {
+        use soroban_sdk::IntoVal;
+
+        // Get adapter address from Hoops router
+        let adapter_address: Address = e.invoke_contract(
+            &config.hoops_router,
+            &soroban_sdk::Symbol::new(e, "get_adapter"),
+            soroban_sdk::vec![e, campaign.adapter_id.into_val(e)],
+        );
+
+        let cca = e.current_contract_address();
+        let token_client = soroban_sdk::token::Client::new(e, sell_token);
+
+        let half = total_amount / 2;
+        let remaining = total_amount - half;
+
+        // Transfer half to adapter for swap
+        token_client.transfer(&cca, &adapter_address, &half);
+
+        // Call adapter swap_in_pool
+        let swap_out: i128 = e.invoke_contract(
+            &adapter_address,
+            &soroban_sdk::Symbol::new(e, "swap_in_pool"),
+            soroban_sdk::vec![
+                e,
+                campaign.pool_address.clone().into_val(e),
+                sell_token.into_val(e),
+                half.into_val(e),
+                0i128.into_val(e),        // min_out
+                cca.clone().into_val(e),  // to
+            ],
+        );
+
+        // Transfer remaining sell_token to adapter for liquidity
+        token_client.transfer(&cca, &adapter_address, &remaining);
+
+        // Track LP balance before deposit
+        let lp_client = soroban_sdk::token::Client::new(e, &campaign.lp_token);
+        let lp_before = lp_client.balance(&cca);
+
+        // Call adapter add_liq_in_pool
+        e.invoke_contract::<()>(
+            &adapter_address,
+            &soroban_sdk::Symbol::new(e, "add_liq_pool"),
+            soroban_sdk::vec![
+                e,
+                campaign.pool_address.clone().into_val(e),
+                remaining.into_val(e),
+                swap_out.into_val(e),
+                cca.clone().into_val(e),  // LP tokens sent here
+            ],
+        );
+
+        let lp_after = lp_client.balance(&cca);
+        let lp_received = lp_after - lp_before;
+
+        Ok(lp_received)
     }
 }
 
